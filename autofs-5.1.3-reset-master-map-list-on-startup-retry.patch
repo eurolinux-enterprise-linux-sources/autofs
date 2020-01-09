@@ -18,10 +18,10 @@ Signed-off-by: Ian Kent <raven@themaw.net>
 
 --- autofs-5.0.7.orig/CHANGELOG
 +++ autofs-5.0.7/CHANGELOG
-@@ -265,6 +265,7 @@
- - make map source reference message debug only.
+@@ -254,6 +254,7 @@
+ - revert fix argc off by one in mount_autofs.c.
+ - allow dot in OPTIONSTR value lexer pattern.
  - handle additional nfs versions in mount_nfs.c.
- - improve description of mount_nfs_default_protocol.
 +- reset master map list on startup retry.
  
  25/07/2012 autofs-5.0.7

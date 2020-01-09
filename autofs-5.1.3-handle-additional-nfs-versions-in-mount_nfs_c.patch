@@ -16,10 +16,10 @@ Signed-off-by: Ian Kent <raven@themaw.net>
 
 --- autofs-5.0.7.orig/CHANGELOG
 +++ autofs-5.0.7/CHANGELOG
-@@ -263,6 +263,7 @@
- - be silent about sss library not found.
- - be silent about nis domain not set.
- - make map source reference message debug only.
+@@ -253,6 +253,7 @@
+ - fix unset tsd group name handling.
+ - revert fix argc off by one in mount_autofs.c.
+ - allow dot in OPTIONSTR value lexer pattern.
 +- handle additional nfs versions in mount_nfs.c.
  
  25/07/2012 autofs-5.0.7

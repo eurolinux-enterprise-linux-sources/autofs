@@ -8,7 +8,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.0.7
-Release: 106%{?dist}
+Release: 70%{?dist}.1
 Epoch: 1
 License: GPLv2+
 Group: System Environment/Daemons
@@ -406,98 +406,15 @@ Patch790: autofs-5.1.2-limit-getgrgid_r-buffer-size.patch
 Patch791: autofs-5.1.2-add-congigure-option-for-limiting-getgrgid_r-stack-usage.patch
 Patch792: autofs-5.1.3-fix-unset-tsd-group-name-handling.patch
 
-Patch793: autofs-5.1.3-set-systemd-KillMode-to-process.patch
-Patch794: autofs-5.1.3-fix-mount_nfs-blocks-on-first-mount.patch
-Patch795: autofs-5.1.3-fix-a-couple-of-typos-in-autofs-man-pages.patch
-Patch796: autofs-5.1.3-fix-some-man-problems.patch
-Patch797: autofs-5.1.3-allow-dot-in-OPTIONSTR-value-lexer-pattern.patch
-Patch798: autofs-5.1.3-revert-fix-argc-off-by-one-in-mount_autofs_c.patch
-Patch799: autofs-5.1.3-only-take-master-map-mutex-for-master-map-update.patch
-Patch800: autofs-5.1.3-fix-nisplus-lookup-init-not-configured-check.patch
-Patch801: autofs-5.1.3-make-open_lookup-error-handling-more-consistent.patch
-Patch802: autofs-5.1.3-be-silent-about-sss-library-not-found.patch
-Patch803: autofs-5.1.3-be-silent-about-nis-domain-not-set.patch
-Patch804: autofs-5.1.3-make-map-source-reference-message-debug-only.patch
-Patch805: autofs-5.1.3-handle-additional-nfs-versions-in-mount_nfs_c.patch
-Patch806: autofs-5.1.3-improve-description-of-mount_nfs_default_protocol.patch
-Patch807: autofs-5.1.3-reset-master-map-list-on-startup-retry.patch
+Patch793: autofs-5.1.3-revert-fix-argc-off-by-one-in-mount_autofs_c.patch
+Patch794: autofs-5.1.3-allow-dot-in-OPTIONSTR-value-lexer-pattern.patch
+Patch795: autofs-5.1.3-handle-additional-nfs-versions-in-mount_nfs_c.patch
 
-# Bug 1509043
-Patch810: autofs-5.1.3-improve-debug-logging-of-lookup-key.patch
-Patch811: autofs-5.1.2-fix-cachefs-parse-message-not-being-logged.patch
-Patch812: autofs-5.1.3-fix-typo-in-amd_parse_c.patch
-Patch813: autofs-5.1.3-add-missing-MODPREFIX-to-logging-in-amd-parser.patch
-Patch814: autofs-5.1.3-fix-symlink-false-negative-in-umount_multi.patch
-Patch815: autofs-5.1.3-remove-expand_selectors-call-on-amd-parser-entry.patch
-Patch816: autofs-5.1.3-fix-amd-defaults-map-entry-handling.patch
-Patch817: autofs-5.1.3-refactor-amd_parse_c.patch
-Patch818: autofs-5.1.3-fix-amd-parser-double-quote-handling.patch
-Patch819: autofs-5.1.3-fix-expandamdent-quote-handling.patch
-Patch820: autofs-5.1.3-fix-possible-memory-leak-during-amd-parse.patch
-Patch821: autofs-5.1.3-remove-path-restriction-of-amd-external-mount.patch
-Patch822: autofs-5.1.3-add-function-umount_amd_ext_mount.patch
-Patch823: autofs-5.1.3-add-function-ext_mount_inuse.patch
-Patch824: autofs-5.1.3-add-function-construct_argv.patch
-Patch825: autofs-5.1.3-add-amd-mount-type-program-mount-support.patch
-Patch826: autofs-5.1.3-fix-memory-leak-in-umount_amd_ext_mount.patch
-Patch827: autofs-5.1.3-fix-strerror_r-parameter-declaration-in-do_program_mount.patch
-Patch828: autofs-5.1.3-fix-incorrect-check-in-validate_program_options.patch
-
-Patch829: autofs-5.1.3-update-configure-to-check-for-pipe2.patch
-Patch830: autofs-5.1.3-fix-open-calls-not-using-open_xxxx-calls.patch
-Patch831: autofs-5.1.3-move-open_xxxx-functions-to-spawn_c.patch
-Patch832: autofs-5.1.3-serialize-calls-to-open_xxxx-functions.patch
-
-Patch833: autofs-5.1.4-fix-use-after-free-in-do_master_list_reset.patch
-Patch834: autofs-5.1.4-fix-deadlock-in-dumpmaps.patch
-
-Patch835: autofs-5.1.4-dont-use-array-for-path-when-not-neccessary.patch
-Patch836: autofs-5.1.4-fix-prefix-option-handling-in-expand_entry.patch
-Patch837: autofs-5.1.4-fix-sublink-option-not-set-from-defaults.patch
-Patch838: autofs-5.1.4-fix-error-return-in-do_nfs_mount.patch
-
-Patch839: autofs-5.1.1-fix-create_client-RPC-client-handling.patch
-Patch840: autofs-5.1.4-dont-allow-trailing-slash-in-master-map-mount-points.patch
-Patch841: autofs-5.1.4-fix-fd-leak-in-rpc_do_create_client.patch
-Patch842: autofs-5.1.4-add-man-page-note-about-extra-slashes-in-paths.patch
-Patch843: autofs-5.1.4-add-units-After-line-to-include-statd-service.patch
-Patch844: autofs-5.1.4-use-systemd-sd_notify-at-startup.patch
-Patch845: autofs-5.1.4-fix-update_negative_cache-map-source-usage.patch
-Patch846: autofs-5.1.4-mark-removed-cache-entry-negative.patch
-Patch847: autofs-5.1.3-remove-some-redundant-rpc-library-code.patch
-Patch848: autofs-5.1.3-add-port-parameter-to-rpc_ping.patch
-Patch849: autofs-5.1.3-dont-probe-NFSv2-by-default.patch
-Patch850: autofs-5.1.3-add-version-parameter-to-rpc_ping.patch
-Patch851: autofs-5.1.4-set-bind-mount-as-propagation-slave.patch
-Patch852: autofs-5.1.4-add-master-map-pseudo-options-for-mount-propagation.patch
-Patch853: autofs-5.1.4-fix-amd-parser-opts-option-handling.patch
-Patch854: autofs-5.1.4-fix-incorrect-locking-in-sss-lookup.patch
-
-Patch855: autofs-5.1.4-add-NULL-check-in-prepare_attempt_prefix.patch
-Patch856: autofs-5.1.4-update-build-info-with-systemd.patch
-Patch857: autofs-5.1.4-use-flags-for-startup-boolean-options.patch
-Patch858: autofs-5.1.4-move-close-stdio-descriptors-to-become_daemon.patch
-Patch859: autofs-5.1.4-add-systemd-service-command-line-option.patch
-
-Patch860: autofs-5.1.5-add-strictexpire-mount-option.patch
-Patch861: autofs-5.1.5-add-NULL-check-for-get_addr_string-return.patch
-Patch862: autofs-5.1.5-use-malloc-in-spawn_c.patch
-Patch863: autofs-5.1.5-add-mount_verbose-configuration-option.patch
-Patch864: autofs-5.1.5-optionally-log-mount-requestor-process-info.patch
-Patch865: autofs-5.1.5-log-mount-call-arguments-if-mount_verbose-is-set.patch
-
-Patch866: autofs-5.1.5-openssl-workaround.patch
-Patch867: autofs-5.1.3-document-ghost-option-in-auto_master-man-page.patch
-Patch868: autofs-5.1.5-make-expire-remaining-log-level-debug.patch
-Patch869: autofs-5.1.3-workaround-getaddrinfo-ai_canonname-bug.patch
-Patch870: autofs-5.1.4-improve-hostname-lookup-error-logging.patch
-Patch871: autofs-5.1.5-allow-period-following-macro-in-selector-value.patch
-Patch872: autofs-5.1.5-fix-macro-expansion-in-selector-values.patch
+Patch800: autofs-5.1.3-reset-master-map-list-on-startup-retry.patch
 
 Buildroot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 %if %{with_systemd}
 BuildRequires: systemd-units
-BuildRequires: systemd-devel
 %endif
 BuildRequires: autoconf, hesiod-devel, openldap-devel, bison, flex, libxml2-devel, cyrus-sasl-devel, openssl-devel module-init-tools util-linux nfs-utils e2fsprogs libtirpc-devel
 BuildRequires: libsss_autofs
@@ -941,90 +858,8 @@ echo %{version}-%{release} > .version
 %patch793 -p1
 %patch794 -p1
 %patch795 -p1
-%patch796 -p1
-%patch797 -p1
-%patch798 -p1
-%patch799 -p1
+
 %patch800 -p1
-%patch801 -p1
-%patch802 -p1
-%patch803 -p1
-%patch804 -p1
-%patch805 -p1
-%patch806 -p1
-%patch807 -p1
-
-# Bug 1509043
-%patch810 -p1
-%patch811 -p1
-%patch812 -p1
-%patch813 -p1
-%patch814 -p1
-%patch815 -p1
-%patch816 -p1
-%patch817 -p1
-%patch818 -p1
-%patch819 -p1
-%patch820 -p1
-%patch821 -p1
-%patch822 -p1
-%patch823 -p1
-%patch824 -p1
-%patch825 -p1
-%patch826 -p1
-%patch827 -p1
-%patch828 -p1
-
-%patch829 -p1
-%patch830 -p1
-%patch831 -p1
-%patch832 -p1
-
-%patch833 -p1
-%patch834 -p1
-
-%patch835 -p1
-%patch836 -p1
-%patch837 -p1
-%patch838 -p1
-
-%patch839 -p1
-%patch840 -p1
-%patch841 -p1
-%patch842 -p1
-%patch843 -p1
-%patch844 -p1
-%patch845 -p1
-%patch846 -p1
-%patch847 -p1
-%patch848 -p1
-%patch849 -p1
-%patch850 -p1
-%patch851 -p1
-%patch852 -p1
-%patch853 -p1
-%patch854 -p1
-
-%patch855 -p1
-%patch856 -p1
-%patch857 -p1
-%patch858 -p1
-%patch859 -p1
-
-%patch860 -p1
-%patch861 -p1
-%patch862 -p1
-%patch863 -p1
-%patch864 -p1
-%patch865 -p1
-
-%patch866 -p1
-%patch867 -p1
-%patch868 -p1
-%patch869 -p1
-%patch870 -p1
-%patch871 -p1
-%patch872 -p1
 
 %build
 LDFLAGS=-Wl,-z,now
@@ -1122,251 +957,20 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
-* Thu Mar 07 2019 Ian Kent <ikent@redhat.com> - 5.0.7-106
-- bz1685804 - autofs doesn't expand macros in amd map selectors
-  - workaround getaddrinfo(3) ai_canonname bug.
-  - improve hostname lookup error logging.
-  - allow period following macro in selector value.
-  - fix macro expansion in selector values.
-- Resolves: rhbz#1685804
-
-* Tue Mar 05 2019 Ian Kent <ikent@redhat.com> - 5.0.7-105
-- bz1680582 - Sanitize autofs logging
-  - make expire remaining log level debug.
-- Resolves: rhbz#1680582
-
-* Tue Mar 05 2019 Ian Kent <ikent@redhat.com> - 5.0.7-104
-- bz1442063 - Parameter ghost not documented in the man pages
-  - document ghost option in auto.master man page.
-- Resolves: rhbz#1442063
-
-* Mon Feb 18 2019 Ian Kent <ikent@redhat.com> - 5.0.7-103
-- bz1644933 - Segmentation fault in err_string_data_LHASH_COMP
-  - openssl workaround.
-- Resolves: rhbz#1644933
-
-* Mon Feb 04 2019 Ian Kent <ikent@redhat.com> - 5.0.7-102
-- bz1644910 - [RFE] Enable additional logging information for autofs
-  - add NULL check for get_addr_string() return.
-  - use malloc(3) in spawn.c.
-  - add mount_verbose configuration option.
-  - optionally log mount requestor process info.
-  - log mount call arguments if mount_verbose is set.
-- Resolves: rhbz#1644910
-
-* Tue Jan 22 2019 Ian Kent <ikent@redhat.com> - 5.0.7-101
-- bz1640448 - path_resolution on an autofs managed path resets the timer. Can
-  this be made configurable?
-  - support strictexpire mount option.
-- Resolves: rhbz#1640448
-
-* Tue Dec 11 2018 Ian Kent <ikent@redhat.com> - 5.0.7-100
-- bz1599516 - [autofs] The log no longer print PID of automount process
-  - add NULL check in prepare_attempt_prefix().
-  - update build info with systemd.
-  - use flags for startup boolean options.
-  - move close stdio descriptors to become_daemon().
-  - add systemd service command line option.
-- Resolves: rhbz#1599516
-
-* Wed Sep 19 2018 Ian Kent <ikent@redhat.com> - 5.0.7-98
-- bz1630189 - yum update hanging while restarting autofs
-  - fix incorrect locking in sss lookup.
--Resolves: rhbz#1630189
-
-* Mon Sep 17 2018 Ian Kent <ikent@redhat.com> - 5.0.7-98
-- bz1627502 - after upgrading to autofs-5.0.7-83.el7.x86_64 on RHEL 7 clients,
-  amd maps /defaults key mount options are no longer working
-  - fix amd parser opts option handling.
-- Resolves: rrhbz#1627502
-
-* Mon Aug 13 2018 Ian Kent <ikent@redhat.com> - 5.0.7-97
-- bz1358887 - On Red Hat 7.x systems if you try to access local
-  filesystems using the automounter through /net then the shell
-  and mount could lock up *if* the filesystem your accessing is
-  double exported.
-  - set bind mount as propagation slave.
-  - add master map pseudo options for mount propagation.
-- Resolves: rhbz#1358887
-
-* Fri Aug 10 2018 Ian Kent <ikent@redhat.com> - 5.0.7-96
-- bz1598640 - Server availability probe broke tunneling nfs via localhost
-  - remove some redundant rpc library code.
-  - add port parameter to rpc_ping().
-  - dont probe NFSv2 by default.
-  - add version parameter to rpc_ping().
-- Resolves: rhbz#1598640
-
-* Tue Aug 07 2018 Ian Kent <ikent@redhat.com> - 5.0.7-95
-- bz1612914 - [autofs]Removed entries still can be accessed
-  - mark removed cache entry negative.
-- Resolves: rhbz#1612914
-
-* Sat Aug 04 2018 Ian Kent <ikent@redhat.com> - 5.0.7-94
-- bz1609128 - autofs reload is unable to activate new map entries,
-  it is autofs restart which shows new map entries.
-  - fix update_negative_cache() map source usage.
-- Resolves: rhbz#1609128
-
-* Thu May 24 2018 Ian Kent <ikent@redhat.com> - 5.0.7-93
-- bz1581502 - PID file never created or disappears
-  - add missing BuildRequires: systemd-devel.
-  - fix changelog entry revision.
--Related: rhbz#1581502
-
-* Thu May 24 2018 Ian Kent <ikent@redhat.com> - 5.0.7-92
-- bz1581502 - PID file never created or disappears
-  - add units After line to include statd service.
-  - use systemd sd_notify() at startup.
--Resolves: rhbz#1581502
-
-* Fri May 18 2018 Ian Kent <ikent@redhat.com> - 5.0.7-90
-- bz1536526 - Ignore trailing slashes at the end of executable maps
-  in auto.master config file
-  - add man page note about extra slashes in paths.
--Related: rhbz#1536526
-
-* Mon May 14 2018 Ian Kent <ikent@redhat.com> - 5.0.7-89
-- bz1548922 - automount crashes due to segfault
-  - and fix incorrect month in changelog entries.
--Related: rhbz#1548922
-
-* Mon May 14 2018 Ian Kent <ikent@redhat.com> - 5.0.7-88
-- bz1548922 - automount crashes due to segfault
-  - fix changelog date on previous two entries.
--Related: rhbz#1548922
-
-* Mon May 14 2018 Ian Kent <ikent@redhat.com> - 5.0.7-87
-- bz1548922 - automount crashes due to segfault
-  - fix package revision and changelog.
--Related: rhbz#1548922
-
-* Mon May 14 2018 Ian Kent <ikent@redhat.com> - 5.0.7-86
-- bz1548922 - automount crashes due to segfault
-  - fix fd leak in rpc_do_create_client().
--Related: rhbz#1548922
-
-* Fri Apr 06 2018 Ian Kent <ikent@redhat.com> - 5.0.7-85
-- bz1536526 - Ignore trailing slashes at the end of executable maps
-  in auto.master config file
-  - dont allow trailing slash in master map mount points.
--Resolves: rhbz#1536526
-
-* Fri Apr 06 2018 Ian Kent <ikent@redhat.com> - 5.0.7-84
-- bz1548922 - automount crashes due to segfault
-  - fix create_client() RPC client handling.
--Resolves: rhbz#1548922
-
-* Fri Feb 02 2018 Ian Kent <ikent@redhat.com> - 5.0.7-83
-- bz1509043 - [RFE] "automount / amd: file system type program is not
-  yet implemented"
-  - dont use array for path when not necessary.
-  - fix prefix option handling in expand_entry().
-  - fix sublink handling in do_nfs_mount().
-  - add fix error return in do_nfs_mount().
-- Related: rhbz#1509043
-
-* Fri Dec 22 2017 Ian Kent <ikent@redhat.com> - 5.0.7-82
-- bz1527815 - automount[1979]: segfault at 55f5101d30e8 ip 000055f50f177668
-              sp 00007ffffa85fdd0 error 4 in automount[55f50f16d000+48000]
-  - fix deadlock in dumpmaps.
-- Related: rhbz#1527815
-
-* Thu Dec 21 2017 Ian Kent <ikent@redhat.com> - 5.0.7-81
-- bz1527815 - automount[1979]: segfault at 55f5101d30e8 ip 000055f50f177668
-              sp 00007ffffa85fdd0 error 4 in automount[55f50f16d000+48000]
-  - fix use after free in do_master_list_reset()
-- Resolves: rhbz#1527815
-
-* Mon Dec 18 2017 Ian Kent <ikent@redhat.com> - 5.0.7-80
-- bz1509088 - autofs hangs due to race condition in do_spawn
-  - update configure to check for pipe2(2).
-  - fix open calls not using open_xxxx() calls.
-  - move open_xxxx() functions to spawn.c.
-  - serialize calls to open_xxxx() functions.
-- Resolves: rhbz#1509088
-
-* Mon Dec 11 2017 Ian Kent <ikent@redhat.com> - 5.0.7-79
-- bz1509043 - [RFE] "automount / amd: file system type program is not
-  yet implemented"
-  - fix memory leak in umount_amd_ext_mount().
-  - fix strerror_r() parameter declaration in do program_mount().
-  - fix incorrect check in validate_program_options().
-- Related: rhbz#1509043
-
-* Mon Dec 11 2017 Ian Kent <ikent@redhat.com> - 5.0.7-78
-- bz1509043 - [RFE] "automount / amd: file system type program is not
-  yet implemented"
-  - improve debug logging of lookup key.
-  - fix cachefs parse message not being logged.
-  - fix typo in amd_parse.c.
-  - add missing MODPREFIX to logging in amd parser.
-  - fix symlink false negative in umount_multi().
-  - remove expand_selectors() call on amd parser entry.
-  - fix amd defaults map entry handling.
-  - refactor amd_parse.c.
-  - fix amd parser double quote handling.
-  - fix expandamdent() quote handling.
-  - fix possible memory leak during amd parse.
-  - remove path restriction of amd external mount.
-  - add function umount_amd_ext_mount().
-  - add function ext_mount_inuse().
-  - add function construct_argv().
-  - add amd mount type program mount support.
-- Resolves: rhbz#1509043
-
-* Tue Oct 31 2017 Ian Kent <ikent@redhat.com> - 5.0.7-77
-- bz1504145 - Automount cannot access host shares after a reboot
-  - fix reject in patch changelog hunk.
-- Related: rhbz#1504145
-
-* Tue Oct 31 2017 Ian Kent <ikent@redhat.com> - 5.0.7-76
-- bz1504145 - Automount cannot access host shares after a reboot
+* Thu Oct 19 2017 Ian Kent <ikent@redhat.com> - 5.0.7-70.el7_4.1
+- bz1515311 - Automount cannot access host shares after a reboot [rhel-7.4.z]
   - reset master map list on startup retry.
-- Resolves: rhbz#1504145
+- Resolves: rhbz#1515311
 
-* Fri Oct 27 2017 Ian Kent <ikent@redhat.com> - 5.0.7-75
-- bz1489247 - autofs: config mount_nfs_default_protocol doesn't work
-  - improve description of mount_nfs_default_protocol.
-- Resolves: rhbz#1489247
-
-* Thu Oct 19 2017 Ian Kent <ikent@redhat.com> - 5.0.7-74
-- bz1486035 - autofs map entry options field does not accept dot character
-  - handle additional nfs versions in mount_nfs.c.
-- Related: rhbz#1486035
-
-* Wed Oct 11 2017 Ian Kent <ikent@redhat.com> - 5.0.7-73
-- bz1489648 - autofs missing dependency with libsss_autofs cause missing file
-  messages during boot
-  - fix nisplus lookup init not configured check.
-  - make open_lookup() error handling more consistent.
-  - be silent about sss library not found.
-  - be silent about nis domain not set.
-  - make map source reference message debug only.
-- Resolves: rhbz#1489648
-
-* Mon Oct 9 2017 Ian Kent <ikent@redhat.com> - 5.0.7-72
-- bz1499287 - Autofs processes hung while waiting for the release of an entry
-  master_lock that is held by another thread waiting on a bind mount
-  - only take master map mutex for master map update.
-- Resolves: rhbz#1499287
-
-* Thu Oct 5 2017 Ian Kent <ikent@redhat.com> - 5.0.7-71
-- bz1497846 - Macro definitions specified in mount entries are no longer getting set
+* Thu Oct 19 2017 Ian Kent <ikent@redhat.com> - 5.0.7-70.el7_4
+- bz1503945 - autofs option parsing for maps with fstype=autofs no longer
+  works [rhel-7.4.z]
   - revert fix argc off by one in mount_autofs.c.
-- Resolves: rhbz#1497846
-
-* Mon Oct 2 2017 Ian Kent <ikent@redhat.com> - 5.0.7-70
-- bz1442926 - Systemd kills autofs fuse mount on service restart
-  - set systemd KillMode to process.
-- bz1466256 - autofs: unable to mount nfs share after reboot
-  - fix mount.nfs blocks on first mount.
-- bz1476850 - Man page: Make auto.master 's summary findable via 'man -k autofs'
-  - fix typos in autofs man pages.
-  - fix some man page problems.
-- bz1486035 - autofs map entry options field does not accept dot character
+- bz1503946 - autofs map entry options field does not accept dot character
+  [rhel-7.4.z]
   - allow dot in OPTIONSTR value lexer pattern.
--Resolves: rhbz#1442926 rhbz#1466256 rhbz#1476850 rhbz#1486035
+  - handle additional nfs versions in mount_nfs.c.
+- Resolves: rhbz#1503945 rhbz#1503946
 
 * Fri Jun 2 2017 Ian Kent <ikent@redhat.com> - 5.0.7-69
 - bz1435736 - autofs fails with kernel: automount[3386]:

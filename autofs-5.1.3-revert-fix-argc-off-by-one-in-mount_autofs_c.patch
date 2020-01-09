@@ -16,10 +16,10 @@ Signed-off-by: Ian Kent <raven@themaw.net>
 
 --- autofs-5.0.7.orig/CHANGELOG
 +++ autofs-5.0.7/CHANGELOG
-@@ -256,6 +256,7 @@
- - fix typos in autofs man pages.
- - fix some man page problems.
- - allow dot in OPTIONSTR value lexer pattern.
+@@ -251,6 +251,7 @@
+ - limit getgrgid_r() buffer size.
+ - add congigure option for limiting getgrgid_r() stack usage.
+ - fix unset tsd group name handling.
 +- revert fix argc off by one in mount_autofs.c.
  
  25/07/2012 autofs-5.0.7
