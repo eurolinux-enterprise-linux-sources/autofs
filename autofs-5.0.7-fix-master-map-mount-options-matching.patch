@@ -1,0 +1,39 @@
+autofs-5.0.7 - fix master map mount options matching
+
+From: Ian Kent <raven@themaw.net>
+
+The master map options pattern matching is fairly primitive since it
+doesn't need to be very sophisticated. The current mount option pattern
+matching can't match mount options with quotes or embedded colons and so
+it can't pass these options through as a global options string.
+
+But it must be able to match a fairly large class of strings, including
+the above case, so they can be passed through as global options. Of
+course it can't try and validate them since it can't know what mount type
+they may be used with.
+---
+ CHANGELOG        |    1 +
+ lib/master_tok.l |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -124,6 +124,7 @@
+ - fix recursive mount deadlock.
+ - increase file map read buffer size.
+ - dont use pthread_rwlock_tryrdlock().
++- fix master map mount options matching.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/master_tok.l
++++ autofs-5.0.5/lib/master_tok.l
+@@ -90,7 +90,7 @@ OPTWS		[[:blank:]]*
+ NL		\r?\n
+ CONT		\\\n{OPTWS}
+ 
+-OPTIONSTR	([\-]?([[:alpha:]_]([[:alnum:]_\-])*(=([[:alnum:]_\-])+)*)+)
++OPTIONSTR	([\-]?([[:alpha:]_]([[:alnum:]_\-])*(=(\"?([[:alnum:]_\-\:])+\"?))?)+)
+ MACROSTR	(-D{OPTWS}([[:alpha:]_]([[:alnum:]_\-\.])*)=([[:alnum:]_\-\.])+)
+ SLASHIFYSTR	(--(no-)?slashify-colons)
+ NUMBER		[0-9]+

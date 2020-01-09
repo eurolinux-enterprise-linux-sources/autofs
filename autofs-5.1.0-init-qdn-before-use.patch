@@ -1,0 +1,33 @@
+autofs-5.1.0 - init qdn before use in get_query_dn()
+
+From: Ian Kent <ikent@redhat.com>
+
+Ensure qdn is initialized before use in case there's garbage in it.
+---
+ CHANGELOG             |    1 +
+ modules/lookup_ldap.c |    3 +--
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -263,6 +263,7 @@
+ - make find_server() return a status.
+ - fix return handling of do_reconnect() in ldap module.
+ - fix race accessing qdn in get_query_dn().
++- init qdn before use in get_query_dn().
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/lookup_ldap.c
++++ autofs-5.0.5/modules/lookup_ldap.c
+@@ -335,9 +335,8 @@ LDAP *init_ldap_connection(unsigned logo
+ static int get_query_dn(unsigned logopt, LDAP *ldap, struct lookup_context *ctxt, const char *class, const char *key)
+ {
+ 	char buf[MAX_ERR_BUF];
+-	char *query, *dn, *qdn;
++	char *query, *dn, *qdn = NULL;
+ 	LDAPMessage *result = NULL, *e;
+-	struct ldap_searchdn *sdns = NULL;
+ 	char *attrs[2];
+ 	struct berval **value;
+ 	int scope;

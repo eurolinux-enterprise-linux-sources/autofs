@@ -1,0 +1,45 @@
+autofs-5.0.6 - fix rework error return handling in rpc code
+
+From: Dustin Polke <DuPol@gmx.de>
+
+This fixes the following error:
+rpc_subs.c: In function ‘rpc_do_create_client’:
+rpc_subs.c:203:3: error: a label can only be part of a statement and a
+declaration is not a statement
+---
+
+ CHANGELOG      |    1 +
+ lib/rpc_subs.c |    4 ++--
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -88,6 +88,7 @@
+ - rework error return handling in rpc code.
+ - catch EHOSTUNREACH and bail out early.
+ - fix function to check mount.nfs version.
++- fix rework error return handling in rpc code.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/rpc_subs.c
++++ autofs-5.0.5/lib/rpc_subs.c
+@@ -149,7 +149,7 @@ static int rpc_do_create_client(struct s
+ 	CLIENT *clnt = NULL;
+ 	struct sockaddr_in in4_laddr;
+ 	struct sockaddr_in *in4_raddr;
+-	int type, proto;
++	int type, proto, ret;
+ 	socklen_t slen;
+ 
+ 	*client = NULL;
+@@ -194,7 +194,7 @@ static int rpc_do_create_client(struct s
+ 		break;
+ 
+ 	case IPPROTO_TCP:
+-		int ret = connect_nb(*fd, addr, slen, &info->timeout);
++		ret = connect_nb(*fd, addr, slen, &info->timeout);
+ 		if (ret < 0)
+ 			return ret;
+ 

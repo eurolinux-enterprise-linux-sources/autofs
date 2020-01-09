@@ -1,0 +1,67 @@
+autofs-5.0.7 - syncronize handle_mounts() shutdown
+
+From: Ian Kent <ikent@redhat.com>
+
+When re-reading the master map the signal handler thread receives
+a SIGTERM signal from handle_mounts_cleanup() for map entries that
+have been removed. This is done to allow joining with handle_mounts()
+threads before shutting down to ensure clean up has been completed
+before the thread terminates.
+
+But, if more than one map entry is removed, multiple threads may be
+cleaned up during the handling of a single signal so there can be no
+work to do when a subsequent signal is received. In this case the
+signal handler thread interprets the additional SIGTERM signal as a
+request to shutdown and exits.
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |    7 ++++++-
+ 2 files changed, 7 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -135,6 +135,7 @@
+ - fix dumpmaps multi output.
+ - try and cleanup after dumpmaps.
+ - teach dumpmaps to output simple key value pairs.
++- syncronize handle_mounts() shutdown.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/daemon/automount.c
++++ autofs-5.0.5/daemon/automount.c
+@@ -1279,6 +1279,7 @@ static int do_hup_signal(struct master *
+ 	nfs_mount_uses_string_options = check_nfs_mount_version(&vers, &check);
+ 
+ 	master_mutex_lock();
++	/* Already doing a map read or shutdown or no mounts */
+ 	if (master->reading) {
+ 		status = pthread_mutex_unlock(&mrc.mutex);
+ 		if (status)
+@@ -1443,6 +1444,7 @@ static void handle_mounts_cleanup(void *
+ 	char path[PATH_MAX + 1];
+ 	char buf[MAX_ERR_BUF];
+ 	unsigned int clean = 0, submount, logopt;
++	unsigned int pending = 0;
+ 
+ 	ap = (struct autofs_point *) arg;
+ 
+@@ -1460,6 +1462,9 @@ static void handle_mounts_cleanup(void *
+ 		list_del_init(&ap->mounts);
+ 	}
+ 
++	/* Don't signal the handler if we have already done so */
++	if (!list_empty(&master_list->completed))
++		pending = 1;
+ 	master_remove_mapent(ap->entry);
+ 	master_source_unlock(ap->entry);
+ 
+@@ -1493,7 +1498,7 @@ static void handle_mounts_cleanup(void *
+ 	 * so it can join with any completed handle_mounts() threads and
+ 	 * perform final cleanup.
+ 	 */
+-	if (!submount)
++	if (!submount && !pending)
+ 		pthread_kill(state_mach_thid, SIGTERM);
+ 	
+ 	return;

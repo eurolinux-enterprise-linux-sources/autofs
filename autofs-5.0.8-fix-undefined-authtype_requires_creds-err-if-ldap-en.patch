@@ -1,0 +1,48 @@
+autofs-5.0.8 - fix undefined authtype_requires_creds err if ldap enabled but without sasl
+
+From: Lan Yixun (dlan) <dennis.yxun@gmail.com>
+
+This patch is moving "WITH_SASL" into authtype_requires_creds function
+make it return 0 if sasl not enabled, which mean authtype_requires_creds is not enabled
+
+https://bugs.gentoo.org/show_bug.cgi?id=489128
+---
+ CHANGELOG             |    1 +
+ modules/lookup_ldap.c |    4 ++--
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -171,6 +171,7 @@
+ - fix result null check in read_one_map().
+ - fix simple bind without SASL support.
+ - fix compilation of lookup_ldap.c without sasl.
++- fix undefined authtype_requires_creds err if ldap enabled but without sasl.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/lookup_ldap.c
++++ autofs-5.0.5/modules/lookup_ldap.c
+@@ -859,20 +859,20 @@ int get_property(unsigned logopt, xmlNod
+ 	return 0;
+ }
+ 
+-#ifdef WITH_SASL
+ /*
+  *  For plain text, login and digest-md5 authentication types, we need
+  *  user and password credentials.
+  */
+ int authtype_requires_creds(const char *authtype)
+ {
++#ifdef WITH_SASL
+ 	if (!strncmp(authtype, "PLAIN", strlen("PLAIN")) ||
+ 	    !strncmp(authtype, "DIGEST-MD5", strlen("DIGEST-MD5")) ||
+ 	    !strncmp(authtype, "LOGIN", strlen("LOGIN")))
+ 		return 1;
++#endif
+ 	return 0;
+ }
+-#endif
+ 
+ /*
+  *  Returns:

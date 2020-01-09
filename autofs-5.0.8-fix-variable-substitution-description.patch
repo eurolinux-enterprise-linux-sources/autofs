@@ -1,0 +1,44 @@
+autofs-5.0.8 - fix variable substitution description
+
+From: Ian Kent <ikent@redhat.com>
+
+The desription about Variable substitution in autofs(5) says that
+translation is done on the key and location fields which is not
+correct.
+
+Expecting to be able to receive a key from the kernel that
+contains variables to be substituted doesn't make sense and
+to be able to use map keys with substitution would mean a full
+map scan for every lookup for all map sources. That is not
+unacceptable for large maps.
+---
+ CHANGELOG    |    1 +
+ man/autofs.5 |    7 ++++---
+ 2 files changed, 5 insertions(+), 3 deletions(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -192,6 +192,7 @@
+ - fix inconsistent error returns in handle_packet_missing_direct().
+ - simple coverity fixes.
+ - fixes for samples/auto.master.
++- fix variable substitution description.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/man/autofs.5
++++ autofs-5.0.5/man/autofs.5
+@@ -157,9 +157,10 @@ The special character '&' will be replac
+ in the example above, a lookup for the key 'foo' would yield a mount
+ of server:/export/home/foo.
+ .SS Variable Substitution
+-The following special variables will be substituted in the key and location
+-fields of an automounter map if prefixed with $ as customary from shell
+-scripts (Curly braces can be used to separate the field name):
++The following special variables will be substituted in the location
++field of an automounter map entry if prefixed with $ as customary
++from shell scripts (curly braces can be used to separate the field
++name):
+ .sp
+ .RS +.2i
+ .ta 1.5i

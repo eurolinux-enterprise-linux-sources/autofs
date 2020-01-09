@@ -1,0 +1,52 @@
+autofs-5.0.6 - fix not bind mounting local filesystem
+
+From: Ian Kent <ikent@redhat.com>
+
+When the --random-multimount-selection (-r) option is used automount(8)
+won't bind mount a local filesystem. If the filesystem that has been
+requested is local it should always be used.
+---
+
+ CHANGELOG            |    1 +
+ modules/replicated.c |   12 +++++++-----
+ 2 files changed, 8 insertions(+), 5 deletions(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -128,6 +128,7 @@
+ - fix master map bogus keywork match.
+ - dont probe rdma mounts.
+ - probe each nfs version in turn for singleton mounts.
++- fix not bind mounting local filesystem.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/replicated.c
++++ autofs-5.0.5/modules/replicated.c
+@@ -1040,18 +1040,20 @@ static int add_new_host(struct host **li
+ 	 * We can't use PROXIMITY_LOCAL or we won't perform an RPC ping
+ 	 * to remove hosts that may be down.
+ 	 */
+-	if (options & MOUNT_FLAG_RANDOM_SELECT)
++	if (!host_addr)
+ 		prx = PROXIMITY_SUBNET;
+ 	else {
+ 		prx = get_proximity(host_addr->ai_addr);
+ 		/*
+ 		 * If we want the weight to be the determining factor
+-		 * when selecting a host then all hosts must have the
+-		 * same proximity. However, if this is the local machine
+-		 * it should always be used since it is certainly available.
++		 * when selecting a host, or we are using random selection,
++		 * then all hosts must have the same proximity. However,
++		 * if this is the local machine it should always be used
++		 * since it is certainly available.
+ 		 */
+ 		if (prx != PROXIMITY_LOCAL &&
+-		   (options & MOUNT_FLAG_USE_WEIGHT_ONLY))
++		   (options & (MOUNT_FLAG_USE_WEIGHT_ONLY |
++			       MOUNT_FLAG_RANDOM_SELECT)))
+ 			prx = PROXIMITY_SUBNET;
+ 	}
+ 

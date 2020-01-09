@@ -1,0 +1,38 @@
+autofs-5.0.6 - allow MOUNT_WAIT to override probe
+
+From: Ian Kent <ikent@redhat.com>
+
+Allow the use of MOUNT_WAIT to override the probe of singleton
+map entries. This can allow for quicker fails to hosts that are
+not reachable.
+---
+
+ CHANGELOG            |    1 +
+ modules/replicated.c |    3 +++
+ 2 files changed, 4 insertions(+)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -89,6 +89,7 @@
+ - catch EHOSTUNREACH and bail out early.
+ - fix function to check mount.nfs version.
+ - fix rework error return handling in rpc code.
++- allow MOUNT_WAIT to override probe.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/replicated.c
++++ autofs-5.0.5/modules/replicated.c
+@@ -953,8 +953,11 @@ int prune_host_list(unsigned logopt, str
+ 	 * are not available so check the kernel version and mount.nfs
+ 	 * version and probe singleton mounts if the kernel version is
+ 	 * greater than 2.6.22 and mount.nfs version is greater than 1.1.1.
++	 * But also allow the MOUNT_WAIT configuration parameter to override
++	 * the probing.
+ 	 */
+ 	if (nfs_mount_uses_string_options &&
++	    defaults_get_mount_wait() == -1 &&
+ 	   (kern_vers = linux_version_code()) > KERNEL_VERSION(2, 6, 22)) {
+ 		if (!this)
+ 			return 1;

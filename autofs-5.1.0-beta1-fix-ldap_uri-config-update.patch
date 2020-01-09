@@ -1,0 +1,64 @@
+autofs-5.1.0-beta1 - fix ldap_uri config update
+
+From: Ian Kent <raven@themaw.net>
+
+Fix some errors in ldap get uris and get search dns.
+---
+ CHANGELOG      |    1 +
+ lib/defaults.c |   11 +++++------
+ 2 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/CHANGELOG b/CHANGELOG
+index c1a9004..082020a 100644
+--- a/CHANGELOG
++++ b/CHANGELOG
+@@ -211,6 +211,7 @@
+ - fix xfn sets incorrect lexer state.
+ - fix old style key lookup.
+ - fix expire when server not responding.
++- fix ldap_uri config update.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+diff --git a/lib/defaults.c b/lib/defaults.c
+index 8eafff2..afce17e 100644
+--- a/lib/defaults.c
++++ b/lib/defaults.c
+@@ -1100,19 +1100,18 @@ struct list_head *defaults_get_uris(void)
+ 	struct list_head *list;
+ 
+ 	list = malloc(sizeof(struct list_head));
+-	if (!list) {
++	if (!list)
+ 		return NULL;
+-	}
+ 	INIT_LIST_HEAD(list);
+ 
+-	if (defaults_read_config(0)) {
++	if (!defaults_read_config(0)) {
+ 		free(list);
+ 		return NULL;
+ 	}
+ 
+ 	pthread_mutex_lock(&conf_mutex);
+ 	co = conf_lookup(autofs_gbl_sec, NAME_LDAP_URI);
+-	if (!co || !co->value) {
++	if (!co) {
+ 		pthread_mutex_unlock(&conf_mutex);
+ 		free(list);
+ 		return NULL;
+@@ -1233,12 +1232,12 @@ struct ldap_searchdn *defaults_get_searchdns(void)
+ 	struct conf_option *co;
+ 	struct ldap_searchdn *sdn, *last;
+ 
+-	if (defaults_read_config(0))
++	if (!defaults_read_config(0))
+ 		return NULL;
+ 
+ 	pthread_mutex_lock(&conf_mutex);
+ 	co = conf_lookup(autofs_gbl_sec, NAME_SEARCH_BASE);
+-	if (!co || !co->value) {
++	if (!co) {
+ 		pthread_mutex_unlock(&conf_mutex);
+ 		return NULL;
+ 	}

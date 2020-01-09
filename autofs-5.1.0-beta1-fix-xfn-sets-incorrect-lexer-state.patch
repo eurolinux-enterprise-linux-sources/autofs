@@ -1,0 +1,39 @@
+autofs-5.1.0-beta1 - fix xfn sets incorrect lexer state
+
+From: Ian Kent <ikent@redhat.com>
+
+The X/Open Federated Naming service isn't supported and the parser will
+call YYABORT() when it sees the MAPXFN token so we must set the start
+state to the INITIAL state here for the next yylex() call.
+---
+ CHANGELOG        |    1 +
+ lib/master_tok.l |    8 +++++++-
+ 2 files changed, 8 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -208,6 +208,7 @@
+ - fix ldap default master map name config.
+ - fix map format init in lookup_init().
+ - fix incorrect max key length in defaults get_hash().
++- fix xfn sets incorrect lexer state.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/master_tok.l
++++ autofs-5.0.5/lib/master_tok.l
+@@ -258,7 +258,13 @@ OPTNTOUT	(-n{OPTWS}|-n{OPTWS}={OPTWS}|--
+ 	}
+ 
+ 	"-xfn" {
+-		BEGIN(OPTSTR);
++		/*
++		 * The X/Open Federated Naming service isn't supported
++		 * and the parser will call YYABORT() when it sees the
++		 * MAPXFN token so we must set the start state to the
++		 * INITIAL state here for the next yylex() call.
++		 */
++		BEGIN(INITIAL);
+ 		strcpy(master_lval.strtype, master_text);
+ 		return MAPXFN;
+ 	}

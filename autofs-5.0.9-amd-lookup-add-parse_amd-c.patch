@@ -1,0 +1,2159 @@
+autofs-5.0.9 - amd lookup add parse_amd.c
+
+From: Ian Kent <raven@themaw.net>
+
+Add a yacc parser and an autofs parser module for amd format
+maps.
+---
+ include/automount.h |    1 
+ include/mounts.h    |    6 
+ include/parse_amd.h |   54 ++
+ lib/mounts.c        |   81 +++
+ modules/Makefile    |   21 -
+ modules/amd_parse.y |  511 ++++++++++++++++++++++++
+ modules/amd_tok.l   |  316 +++++++++++++++
+ modules/parse_amd.c | 1081 ++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 8 files changed, 2069 insertions(+), 2 deletions(-)
+ create mode 100644 include/parse_amd.h
+ create mode 100644 modules/amd_parse.y
+ create mode 100644 modules/amd_tok.l
+ create mode 100644 modules/parse_amd.c
+
+--- autofs-5.0.5.orig/include/automount.h
++++ autofs-5.0.5/include/automount.h
+@@ -34,6 +34,7 @@
+ #include "parse_subs.h"
+ #include "mounts.h"
+ #include "dev-ioctl-lib.h"
++#include "parse_amd.h"
+ 
+ #ifdef WITH_DMALLOC
+ #include <dmalloc.h>
+--- autofs-5.0.5.orig/include/mounts.h
++++ autofs-5.0.5/include/mounts.h
+@@ -85,10 +85,16 @@ unsigned int linux_version_code(void);
+ int check_nfs_mount_version(struct nfs_mount_vers *, struct nfs_mount_vers *);
+ extern unsigned int nfs_mount_uses_string_options;
+ 
++struct amd_entry;
++
+ struct substvar *addstdenv(struct substvar *sv);
+ struct substvar *removestdenv(struct substvar *sv);
+ void add_std_amd_vars(struct substvar *sv);
+ void remove_std_amd_vars(void);
++struct amd_entry *new_amd_entry(const struct substvar *sv);
++void clear_amd_entry(struct amd_entry *entry);
++void free_amd_entry(struct amd_entry *entry);
++void free_amd_entry_list(struct list_head *entries);
+ 
+ unsigned int query_kproto_ver(void);
+ unsigned int get_kver_major(void);
+--- /dev/null
++++ autofs-5.0.5/include/parse_amd.h
+@@ -0,0 +1,54 @@
++/* ----------------------------------------------------------------------- *
++ *
++ *  Copyright 2004-2006 Ian Kent <raven@themaw.net>
++ *  Copyright 2013 Red Hat, Inc.
++ *  All rights reserved.
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, Inc., 675 Mass Ave, Cambridge MA 02139,
++ *  USA; either version 2 of the License, or (at your option) any later
++ *  version; incorporated herein by reference.
++ *
++ * ----------------------------------------------------------------------- */
++
++#ifndef PARSE_AMD_H
++#define PARSE_AMD_H
++
++#define AMD_MOUNT_TYPE_NONE	0x00000000
++#define AMD_MOUNT_TYPE_AUTO	0x00000001
++#define AMD_MOUNT_TYPE_NFS	0x00000002
++#define AMD_MOUNT_TYPE_LINK	0x00000004
++#define AMD_MOUNT_TYPE_HOST	0x00000008
++#define AMD_MOUNT_TYPE_MASK	0x0000ffff
++
++#define AMD_ENTRY_CUT		0x00010000
++#define AMD_ENTRY_MASK		0x00ff0000
++
++#define AMD_DEFAULTS_MERGE	0x01000000
++#define AMD_DEFAULTS_RESET	0x02000000
++#define AMD_DEFAULTS_MASK	0xff000000
++
++struct amd_entry {
++	char *path;
++	unsigned long flags;
++	char *type;
++	char *map_type;
++	char *pref;
++	char *fs;
++	char *rhost;
++	char *rfs;
++	char *opts;
++	char *addopts;
++	char *remopts;
++	char *sublink;
++	struct selector *selector;
++	struct list_head list;
++	struct list_head entries;
++	struct list_head ext_mount;
++};
++
++int amd_parse_list(struct autofs_point *,
++		   const char *, struct list_head *, struct substvar **);
++
++#endif
+--- autofs-5.0.5.orig/lib/mounts.c
++++ autofs-5.0.5/lib/mounts.c
+@@ -442,6 +442,87 @@ void remove_std_amd_vars(void)
+ 	return;
+  }
+ 
++struct amd_entry *new_amd_entry(const struct substvar *sv)
++{
++	struct amd_entry *new;
++	const struct substvar *v;
++	char *path;
++
++	v = macro_findvar(sv, "path", 4);
++	if (!v)
++		return NULL;
++
++	path = strdup(v->val);
++	if (!path)
++		return NULL;
++
++	new = malloc(sizeof(struct amd_entry));
++	if (!new) {
++		free(path);
++		return NULL;
++	}
++
++	memset(new, 0, sizeof(*new));
++	new->path = path;
++	INIT_LIST_HEAD(&new->list);
++	INIT_LIST_HEAD(&new->entries);
++	INIT_LIST_HEAD(&new->ext_mount);
++
++	return new;
++}
++
++void clear_amd_entry(struct amd_entry *entry)
++{
++	if (!entry)
++		return;
++	if (entry->path)
++		free(entry->path);
++	if (entry->map_type)
++		free(entry->map_type);
++	if (entry->pref)
++		free(entry->pref);
++	if (entry->fs)
++		free(entry->fs);
++	if (entry->rhost)
++		free(entry->rhost);
++	if (entry->rfs)
++		free(entry->rfs);
++	if (entry->opts)
++		free(entry->opts);
++	if (entry->addopts)
++		free(entry->addopts);
++	if (entry->remopts)
++		free(entry->remopts);
++	if (entry->sublink)
++		free(entry->sublink);
++	if (entry->selector)
++		free_selector(entry->selector);
++	return;
++}
++
++void free_amd_entry(struct amd_entry *entry)
++{
++	clear_amd_entry(entry);
++	free(entry);
++	return;
++}
++
++void free_amd_entry_list(struct list_head *entries)
++{
++	if (!list_empty(entries)) {
++		struct list_head *head = entries;
++		struct amd_entry *this;
++		struct list_head *p;
++
++		p = head->next;
++		while (p != head) {
++			this = list_entry(p, struct amd_entry, list);
++			p = p->next;
++			free_amd_entry(this);
++		}
++	}
++}
++
+ /*
+  * Make common autofs mount options string
+  */
+--- autofs-5.0.5.orig/modules/Makefile
++++ autofs-5.0.5/modules/Makefile
+@@ -7,16 +7,18 @@ include ../Makefile.rules
+ 
+ SRCS :=	lookup_yp.c  lookup_file.c  lookup_program.c  lookup_userhome.c \
+ 	lookup_multi.c lookup_hosts.c \
+-	parse_sun.c    \
++	parse_sun.c parse_amd.c \
+ 	mount_generic.c  mount_nfs.c  mount_afs.c  mount_autofs.c \
+ 	mount_changer.c  mount_bind.c
+ 
+ MODS :=	lookup_yp.so lookup_file.so lookup_program.so lookup_userhome.so \
+ 	lookup_multi.so lookup_hosts.so \
+-	parse_sun.so \
++	parse_sun.so parse_amd.so \
+ 	mount_generic.so mount_nfs.so mount_afs.so mount_autofs.so \
+ 	mount_changer.so mount_bind.so
+ 
++YACCSRC = amd_tok.c amd_parse.tab.c amd_parse.tab.h \
++
+ ifeq ($(EXT2FS), 1)
+   SRCS += mount_ext2.c
+   MODS += mount_ext2.so
+@@ -89,6 +91,21 @@ else ifeq ($(EXT4FS), 1)
+ 	mv $(INSTALLROOT)$(autofslibdir)/mount_ext2.so $(INSTALLROOT)$(autofslibdir)/mount_ext4.so
+ endif
+ 
++amd_tok.c: amd_tok.l
++	$(LEX) -o$@ -Pamd_ $?
++
++amd_tok.o: amd_tok.c amd_parse.tab.h
++
++amd_parse.tab.c amd_parse.tab.h: amd_parse.y
++	$(YACC) -v -d -p amd_ -b amd_parse $?
++
++amd_parse.tab.o: amd_parse.tab.c amd_parse.tab.h
++
++parse_amd.so: parse_amd.c amd_parse.tab.o amd_tok.o
++	$(CC) $(LDFLAGS) $(SOLDFLAGS) $(CFLAGS) -o parse_amd.so \
++		parse_amd.c amd_parse.tab.o amd_tok.o $(AUTOFS_LIB) $(LIBS)
++	$(STRIP) parse_amd.so
++
+ #
+ # Ad hoc compilation rules for modules which need auxilliary libraries
+ #
+--- /dev/null
++++ autofs-5.0.5/modules/amd_parse.y
+@@ -0,0 +1,511 @@
++%{
++/* ----------------------------------------------------------------------- *
++ *
++ *  Copyright 2013 Ian Kent <raven@themaw.net>
++ *  Copyright 2013 Red Hat, Inc.
++ *  All rights reserved.
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, Inc., 675 Mass Ave, Cambridge MA 02139,
++ *  USA; either version 2 of the License, or (at your option) any later
++ *  version.
++ *
++ *  This program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ * ----------------------------------------------------------------------- */
++
++#include <stdio.h>
++#include <string.h>
++#include <stdlib.h>
++#include <stdarg.h>
++#include <ctype.h>
++#include <sys/ioctl.h>
++#include <syslog.h>
++
++#include "automount.h"
++#include "parse_amd.h"
++
++#define MAX_OPTS_LEN	1024
++#define MAX_ERR_LEN	512
++
++static pthread_mutex_t parse_mutex = PTHREAD_MUTEX_INITIALIZER;
++
++extern FILE *amd_in;
++extern char *amd_text;
++extern int amd_lex(void);
++extern void amd_set_scan_buffer(const char *);
++
++static char *amd_strdup(char *);
++static void local_init_vars(void);
++static void local_free_vars(void);
++
++static int amd_error(const char *s);
++static int amd_notify(const char *s);
++static int amd_msg(const char *s);
++
++static int add_location(void);
++static int make_selector(char *name,
++			 char *value1, char *value2,
++			 unsigned int compare);
++static void add_selector(struct selector *selector);
++
++static struct amd_entry entry;
++static struct list_head *entries;
++static struct autofs_point *pap;
++struct substvar *psv;
++static char opts[MAX_OPTS_LEN];
++static void prepend_opt(char *, char *);
++
++#define YYDEBUG 0
++
++#ifndef YYENABLE_NLS
++#define YYENABLE_NLS 0
++#endif
++#ifndef YYLTYPE_IS_TRIVIAL
++#define YYLTYPE_IS_TRIVIAL 0
++#endif
++
++#if YYDEBUG
++static int amd_fprintf(FILE *, char *, ...);
++#undef YYFPRINTF
++#define YYFPRINTF amd_fprintf
++#endif
++
++%}
++
++%union {
++	char strtype[2048];
++	int inttype;
++	long longtype;
++}
++
++%token COMMENT
++%token SEPERATOR
++%token SPACE
++%token HYPHEN
++%token IS_EQUAL
++%token CUT
++%token NOT_EQUAL
++%token COMMA
++%token OPTION_ASSIGN
++%token NILL
++
++%token <strtype> MAP_OPTION
++%token <strtype> MAP_TYPE
++%token <strtype> FS_TYPE
++%token <strtype> FS_OPTION
++%token <strtype> FS_OPT_VALUE
++%token <strtype> MNT_OPTION
++%token <strtype> SELECTOR
++%token <strtype> SELECTOR_VALUE
++%token <strtype> OPTION
++%token <strtype> MACRO
++%token <strtype> OTHER
++
++%type <strtype> options
++
++%start file
++
++%%
++
++file: {
++#if YYDEBUG != 0
++		amd_debug = YYDEBUG;
++#endif
++		memset(opts, 0, sizeof(opts));
++	} line
++	;
++
++line:
++	| location_selection_list
++	;
++
++location_selection_list: location
++	{
++		if (!add_location()) {
++			amd_msg("failed to allocate new location");
++			YYABORT;
++		}
++	}
++	| location_selection_list SPACE location
++	{
++		if (!add_location()) {
++			amd_msg("failed to allocate new location");
++			YYABORT;
++		}
++	}
++	| location_selection_list SPACE CUT SPACE location
++	{
++		entry.flags |= AMD_ENTRY_CUT;
++		if (!add_location()) {
++			amd_msg("failed to allocate new location");
++			YYABORT;
++		}
++	}
++	;
++
++location: location_entry
++	{
++	}
++	| HYPHEN location_entry
++	{
++		entry.flags |= AMD_DEFAULTS_MERGE;
++	}
++	| HYPHEN
++	{
++		entry.flags |= AMD_DEFAULTS_RESET;
++	}
++	;
++
++location_entry: selector_or_option
++	{
++	}
++	| location_entry SEPERATOR selector_or_option
++	{
++	}
++	| location_entry SEPERATOR
++	{
++	}
++	;
++
++selector_or_option: selection
++	{
++	}
++	| option_assignment
++	{
++	}
++	| OTHER
++	{
++		amd_notify($1);
++		YYABORT;
++	}
++	;
++
++selection: SELECTOR IS_EQUAL SELECTOR_VALUE
++	{
++		if (!make_selector($1, $3, NULL, SEL_TYPE_EQUAL)) {
++			amd_notify($1);
++			YYABORT;
++		}
++	}
++	| SELECTOR NOT_EQUAL SELECTOR_VALUE
++	{
++		if (!make_selector($1, $3, NULL, SEL_TYPE_NOTEQUAL)) {
++			amd_notify($1);
++			YYABORT;
++		}
++	}
++	;
++
++option_assignment: MAP_OPTION OPTION_ASSIGN FS_TYPE
++	{
++		if (!strcmp($3, "auto")) {
++			entry.flags |= AMD_MOUNT_TYPE_AUTO;
++			entry.type = amd_strdup($3);
++		} else if (!strcmp($3, "nfs") ||
++			   !strcmp($3, "nfs4")) {
++			entry.flags |= AMD_MOUNT_TYPE_NFS;
++			entry.type = amd_strdup($3);
++		} else if (!strcmp($3, "link")) {
++			entry.flags |= AMD_MOUNT_TYPE_LINK;
++			entry.type = amd_strdup($3);
++		} else if (!strcmp($3, "host")) {
++			entry.flags |= AMD_MOUNT_TYPE_HOST;
++			entry.type = amd_strdup($3);
++		} else {
++			amd_notify($1);
++			YYABORT;
++		}
++	}
++	| MAP_OPTION OPTION_ASSIGN MAP_TYPE
++	{
++		if (!strcmp($3, "file") ||
++		    !strcmp($3, "nis") ||
++		    !strcmp($3, "nisplus") ||
++		    !strcmp($3, "ldap") ||
++		    !strcmp($3, "hesiod"))
++			entry.map_type = amd_strdup($3);
++		else if (!strcmp($3, "exec"))
++			/* autofs uses "program" for "exec" map type */
++			entry.map_type = amd_strdup("program");
++		else {
++			amd_notify($1);
++			YYABORT;
++		}
++	}
++	| MAP_OPTION OPTION_ASSIGN FS_OPT_VALUE
++	{
++		if (!strcmp($1, "fs"))
++			entry.fs = amd_strdup($3);
++		else if (!strcmp($1, "sublink"))
++			entry.sublink = amd_strdup($3);
++		else if (!strcmp($1, "pref")) {
++			if (!strcmp($3, "null"))
++				entry.pref = amd_strdup("");
++			else
++				entry.pref = amd_strdup($3);
++		} else {
++			amd_notify($1);
++			YYABORT;
++		}
++	}
++	| FS_OPTION OPTION_ASSIGN FS_OPT_VALUE
++	{
++		if (!strcmp($1, "rhost"))
++			entry.rhost = amd_strdup($3);
++		else if (!strcmp($1, "rfs"))
++			entry.rfs = amd_strdup($3);
++		else {
++			amd_notify($1);
++			YYABORT;
++		}
++	}
++	| MNT_OPTION OPTION_ASSIGN options
++	{
++		if (!strcmp($1, "opts")) {
++			entry.opts = amd_strdup(opts);
++			memset(opts, 0, sizeof(opts));
++		} else if (!strcmp($1, "addopts")) {
++			entry.addopts = amd_strdup(opts);
++			memset(opts, 0, sizeof(opts));
++		} else if (!strcmp($1, "remopts")) {
++			entry.remopts = amd_strdup(opts);
++			memset(opts, 0, sizeof(opts));
++		} else {
++			memset(opts, 0, sizeof(opts));
++			amd_notify($1);
++			YYABORT;
++		}
++	}
++	;
++
++options: OPTION
++	{
++		prepend_opt(opts, $1);
++	}
++	| OPTION COMMA options
++	{
++		prepend_opt(opts, $1);
++	}
++	;
++
++%%
++
++static void prepend_opt(char *dest, char *opt)
++{
++	char new[MAX_OPTS_LEN];
++	strcpy(new, opt);
++	if (*dest != '\0') {
++		strcat(new, ",");
++		strcat(new, dest);
++	}
++	memmove(dest, new, strlen(new));
++}
++
++#if YYDEBUG
++static int amd_fprintf(FILE *f, char *msg, ...)
++{
++	va_list ap;
++	va_start(ap, msg);
++	vsyslog(LOG_DEBUG, msg, ap);
++	va_end(ap);
++	return 1;
++}
++#endif
++
++static char *amd_strdup(char *str)
++{
++	char *tmp;
++
++	tmp = strdup(str);
++	if (!tmp)
++		amd_error("memory allocation error");
++	return tmp;
++}
++
++static int amd_error(const char *s)
++{
++	if (strcmp(s, "syntax"))
++		logmsg("syntax error in location near [ %s ]\n", amd_text);
++	else
++		logmsg("%s while parsing location.\n", s);
++	return 0;
++}
++
++static int amd_notify(const char *s)
++{
++	logmsg("syntax error in location near [ %s ]\n", s);
++	return(0);
++}
++
++static int amd_msg(const char *s)
++{
++	logmsg("%s\n", s);
++	return 0;
++}
++
++static void local_init_vars(void)
++{
++	memset(&entry, 0, sizeof(entry));
++	memset(opts, 0, sizeof(opts));
++}
++
++static void local_free_vars(void)
++{
++	clear_amd_entry(&entry);
++	return;
++}
++
++static void add_selector(struct selector *selector)
++{
++	struct selector *s = entry.selector;
++
++	if (!s) {
++		entry.selector = selector;
++		return;
++	}
++
++	while (s->next)
++		s = s->next;
++
++	selector->next = s;
++	entry.selector = selector;
++
++	return;
++}
++
++static int make_selector(char *name,
++			 char *value1, char *value2,
++			 unsigned int compare)
++{
++	struct selector *s;
++	char *tmp;
++
++	if (!sel_lookup(name))
++		return 0;
++
++	if (!value1)
++		return 0;
++
++	s = get_selector(name);
++	if (!s)
++		return 0;
++
++	if (s->sel->flags & SEL_FLAG_MACRO) {
++		tmp = amd_strdup(value1);
++		if (!tmp)
++			goto error;
++		s->comp.value = tmp;
++	} else if (s->sel->flags & SEL_FLAG_FUNC1) {
++		char *tmp = amd_strdup(value1);
++		if (!tmp)
++			goto error;
++		s->func.arg1 = tmp;
++	} else if (s->sel->flags & SEL_FLAG_FUNC2) {
++		char *tmp = amd_strdup(value1);
++		if (!tmp)
++			goto error;
++		s->func.arg1 = tmp;
++		if (value2) {
++			tmp = amd_strdup(value2);
++			if (tmp)
++				s->func.arg2 = tmp;
++		}
++	}
++	s->compare = compare;
++
++	add_selector(s);
++
++	return 1;
++error:
++	free_selector(s);
++	return 0;
++}
++
++void amd_init_scan(void)
++{
++}
++
++static void parse_mutex_lock(void)
++{
++	int status = pthread_mutex_lock(&parse_mutex);
++	if (status)
++		fatal(status);
++	return;
++}
++
++static void parse_mutex_unlock(void *arg)
++{
++	int status = pthread_mutex_unlock(&parse_mutex);
++	if (status)
++		fatal(status);
++	return;
++}
++
++static int add_location(void)
++{
++	struct amd_entry *new;
++
++	new = new_amd_entry(psv);
++	if (!new)
++		return 0;
++
++	if (entry.path) {
++		free(new->path);
++		new->path = entry.path;
++	}
++	new->flags = entry.flags;
++	new->type = entry.type;
++	new->map_type = entry.map_type;
++	new->pref = entry.pref;
++	new->fs = entry.fs;
++	new->rhost = entry.rhost;
++	new->rfs = entry.rfs;
++	new->dev = entry.dev;
++	new->opts = entry.opts;
++	new->addopts = entry.addopts;
++	new->remopts = entry.remopts;
++	new->sublink = entry.sublink;
++	new->selector = entry.selector;
++	list_add_tail(&new->list, entries);
++	memset(&entry, 0, sizeof(struct amd_entry));
++
++	return 1;
++}
++
++int amd_parse_list(struct autofs_point *ap,
++		   const char *buffer, struct list_head *list,
++		   struct substvar **sv)
++{
++	char *buf;
++	size_t len;
++	int ret;
++
++	len = strlen(buffer) + 2;
++	buf = malloc(len);
++	if (!buf)
++		return 0;
++	strcpy(buf, buffer);
++
++	parse_mutex_lock();
++	pthread_cleanup_push(parse_mutex_unlock, NULL);
++
++	pap = ap;
++	psv = *sv;
++	entries = list;
++	amd_set_scan_buffer(buf);
++
++	local_init_vars();
++	ret = amd_parse();
++	local_free_vars();
++	*sv = psv;
++
++	pthread_cleanup_pop(1);
++	free(buf);
++
++	return ret;
++}
+--- /dev/null
++++ autofs-5.0.5/modules/amd_tok.l
+@@ -0,0 +1,316 @@
++%{
++/* ----------------------------------------------------------------------- *
++ *
++ *  Copyright 2013 Ian Kent <raven@themaw.net>
++ *  Copyright 2013 Red Hat, Inc.
++ *  All rights reserved.
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, Inc., 675 Mass Ave, Cambridge MA 02139,
++ *  USA; either version 2 of the License, or (at your option) any later
++ *  version.
++ *
++ *  This program is distributed in the hope that it will be useful,
++ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
++ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ *  GNU General Public License for more details.
++ *
++ * ----------------------------------------------------------------------- */
++
++#ifdef ECHO
++# undef ECHO
++#endif
++static void amd_echo(void);	/* forward definition */
++#define ECHO amd_echo()
++int amd_wrap(void);
++
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <ctype.h>
++#include "amd_parse.tab.h"
++
++int amd_lex(void);
++int mad_wrap(void);
++
++#define YY_SKIP_YYWRAP
++
++#ifndef YY_STACK_USED
++#define YY_STACK_USED 0
++#endif
++#ifndef YY_ALWAYS_INTERACTIVE
++#define YY_ALWAYS_INTERACTIVE 0
++#endif
++#ifndef YY_NEVER_INTERACTIVE
++#define YY_NEVER_INTERACTIVE 0
++#endif
++#ifndef YY_MAIN
++#define YY_MAIN 0
++#endif
++
++void amd_set_scan_buffer(const char *);
++static const char *line = NULL;
++
++#ifdef FLEX_SCANNER
++static const char *line_pos = NULL;
++static const char *line_lim = NULL;
++int amd_yyinput(char *, int);
++
++#undef YY_INPUT
++#define YY_INPUT(b, r, ms) (r = amd_yyinput(b, ms))
++#else
++#undef input
++#undef unput
++#define input()  (*(char *) line++)
++#define unput(c) (*(char *) --line = c)
++#endif
++
++%}
++
++%option nounput
++
++%x MAPOPTVAL FSOPTVAL MNTOPTVAL SELOPTVAL
++
++NL		\r?\n
++OPTWS		[[:blank:]]*
++OTHR		[^!;:=/|\- \t\r\n#]*
++
++MACRO		(\$\{([[:alpha:]_/]([[:alnum:]_\-])([[:alnum:]_\-/])*)\})
++QSTR		(\"([^"\\]|\\.)*\")
++OSTR		([[:alpha:]]([[:alnum:]_\-])+)
++FSTR		([[:alnum:]_/\.]([[:alnum:]_\-/\.]|(\\.))*)
++VSTR		(([[:alnum:]_\-\:/\.])+)
++SSTR		([[:alpha:]]([[:alnum:]\-\.])+)
++
++FOPT		(({QSTR}|{FSTR}|{MACRO})+)
++OPTS		({OSTR}(=({VSTR}|{QSTR}|{MACRO})+)?)
++SOPT		(({SSTR}|{QSTR}|{MACRO})+)
++
++MAPOPT		(fs|type|maptype|pref|sublink|delay)
++MNTOPT		(opts|addopts|remopts)
++FSOPTS		(rhost|rfs|dev|cachedir)
++MAPTYPE		(file|nis|nisplus|ldap|hesiod|exec|ndbm|passwd|union)
++FSTYPE		(auto|nfs|link|host|nfsx|ufs|xfs|efs)
++
++OSSEL		(arch|karch|os|osver|full_os|vendor)
++HSTSEL		(host|hostd|xhost|domain|byte|cluster)
++NETSEL		(netnumber|network|wire|netgrp|netgrpd|in_network)
++USRSEL		(uid|gid)
++MAPSEL		(key|map|path)
++OTRSEL		(exists|autodir|dollar)
++BOLSEL		(true|false)
++SELOPT		({OSSEL}|{HSTSEL}|{NETSEL}|{BOLSEL}|{USRSEL}|{MAPSEL}|{OTRSEL})
++
++CUTSEP		(\|\||\/)
++
++%%
++
++<INITIAL>{
++	{NL} |
++	\x00 { }
++
++	{MAPOPT} {
++		BEGIN(MAPOPTVAL);
++		strcpy(amd_lval.strtype, amd_text);
++		return MAP_OPTION;
++
++	}
++
++	{FSOPTS} {
++		BEGIN(FSOPTVAL);
++		strcpy(amd_lval.strtype, amd_text);
++		return FS_OPTION;
++	}
++
++	{MNTOPT} {
++		BEGIN(MNTOPTVAL);
++		strcpy(amd_lval.strtype, amd_text);
++		return MNT_OPTION;
++	}
++
++	{SELOPT} {
++		BEGIN(SELOPTVAL);
++		strcpy(amd_lval.strtype, amd_text);
++		return SELECTOR;
++	}
++
++	{CUTSEP} { return CUT; }
++
++	"-" { return HYPHEN; }
++
++	{OPTWS} { return SPACE; }
++
++	#.*  { return COMMENT; }
++
++	{OTHR} {
++		strcpy(amd_lval.strtype, amd_text);
++		return OTHER;
++	}
++}
++
++<MAPOPTVAL>{
++	{NL} |
++	\x00 {
++		BEGIN(INITIAL);
++		yyless(1);
++	}
++
++	";" {
++		BEGIN(INITIAL);
++		return SEPERATOR;
++	}
++
++	{OPTWS} {
++		BEGIN(INITIAL);
++		return SPACE;
++	}
++
++	":=" { return OPTION_ASSIGN; }
++
++	{FSTYPE} {
++		strcpy(amd_lval.strtype, amd_text);
++		return FS_TYPE;
++	}
++
++	{MAPTYPE} {
++		strcpy(amd_lval.strtype, amd_text);
++		return MAP_TYPE;
++	}
++
++	{FOPT} {
++		strcpy(amd_lval.strtype, amd_text);
++		return FS_OPT_VALUE;
++	}
++}
++
++<FSOPTVAL>{
++	{NL} |
++	\x00 {
++		BEGIN(INITIAL);
++		yyless(1);
++	}
++
++	";" {
++		BEGIN(INITIAL);
++		return SEPERATOR;
++	}
++
++	{OPTWS} {
++		BEGIN(INITIAL);
++		return SPACE;
++	}
++
++	":=" { return OPTION_ASSIGN; }
++
++	{FOPT} {
++		strcpy(amd_lval.strtype, amd_text);
++		return FS_OPT_VALUE;
++	}
++}
++
++<MNTOPTVAL>{
++	{NL} |
++	\x00 {
++		BEGIN(INITIAL);
++		yyless(1);
++	}
++
++	";" {
++		BEGIN(INITIAL);
++		return SEPERATOR;
++	}
++
++	{OPTWS} {
++		BEGIN(INITIAL);
++		return SPACE;
++	}
++
++	":=" { return OPTION_ASSIGN; }
++
++	"," { return COMMA; }
++
++	{OPTS} {
++		strcpy(amd_lval.strtype, amd_text);
++		return OPTION;
++	}
++}
++
++<SELOPTVAL>{
++	{NL} |
++	\x00 {
++		BEGIN(INITIAL);
++		yyless(1);
++	}
++
++	";" {
++		BEGIN(INITIAL);
++		return SEPERATOR;
++	}
++
++	{OPTWS} {
++		BEGIN(INITIAL);
++		return SPACE;
++	}
++
++	"==" { return IS_EQUAL; }
++
++	"!=" { return NOT_EQUAL; }
++
++	{SOPT} {
++		strcpy(amd_lval.strtype, amd_text);
++		return SELECTOR_VALUE;
++	}
++}
++
++%%
++
++#include "automount.h"
++
++int amd_wrap(void)
++{
++	return 1;
++}
++
++static void amd_echo(void)
++{
++	logmsg("%s\n", amd_text);
++	return;
++}
++
++#ifdef FLEX_SCANNER
++
++void amd_set_scan_buffer(const char *buffer)
++{
++	line = buffer;
++	line_pos = &line[0];
++	/*
++	 * Ensure buffer is 1 greater than string and is zeroed before
++	 * the parse so we can fit the extra NULL which allows us to
++	 * explicitly match an end of line within the buffer (ie. the
++	 * need for 2 NULLS when parsing in memeory buffers).
++	 */
++	line_lim = line + strlen(buffer) + 1;
++}
++
++#define amd_min(a,b) (((a) < (b)) ? (a) : (b))
++
++int amd_yyinput(char *buffer, int max_size)
++{
++	int n = amd_min(max_size, line_lim - line_pos);
++
++	if (n > 0) {
++		memcpy(buffer, line_pos, n);
++		line_pos += n;
++	}
++	return n;
++}
++
++#else
++
++void amd_set_scan_buffer(const char *buffer)
++{
++	line = buffer;
++}
++
++#endif
+--- /dev/null
++++ autofs-5.0.5/modules/parse_amd.c
+@@ -0,0 +1,1081 @@
++/* ----------------------------------------------------------------------- *
++ *
++ *  Copyright 2013 Ian Kent <raven@themaw.net>
++ *  Copyright 2013 Red Hat, Inc.
++ *  All rights reserved.
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License as published by
++ *  the Free Software Foundation, Inc., 675 Mass Ave, Cambridge MA 02139,
++ *  USA; either version 2 of the License, or (at your option) any later
++ *  version; incorporated herein by reference.
++ *
++ * ----------------------------------------------------------------------- */
++
++#include <stdio.h>
++#include <malloc.h>
++#include <netdb.h>
++#include <stdlib.h>
++#include <string.h>
++#include <ctype.h>
++#include <limits.h>
++#include <sys/param.h>
++#include <sys/socket.h>
++#include <sys/types.h>
++#include <sys/stat.h>
++#include <sys/vfs.h>
++#include <sys/utsname.h>
++#include <netinet/in.h>
++#include <sys/mount.h>
++#include <linux/fs.h>
++
++#define MODULE_PARSE
++#include "automount.h"
++
++#define MODPREFIX "parse(amd): "
++
++int parse_version = AUTOFS_PARSE_VERSION;	/* Required by protocol */
++
++static struct mount_mod *mount_nfs = NULL;
++static int init_ctr = 0;
++static pthread_mutex_t instance_mutex = PTHREAD_MUTEX_INITIALIZER;
++
++static void instance_mutex_lock(void)
++{
++	int status = pthread_mutex_lock(&instance_mutex);
++	if (status)
++		fatal(status);
++}
++
++static void instance_mutex_unlock(void)
++{
++	int status = pthread_mutex_unlock(&instance_mutex);
++	if (status)
++		fatal(status);
++}
++
++extern const char *global_options;
++
++struct parse_context {
++	char *optstr;		/* Mount options */
++	char *macros;		/* Map wide macro defines */
++	struct substvar *subst;	/* $-substitutions */
++};
++
++struct multi_mnt {
++	char *path;
++	char *options;
++	char *location;
++	struct multi_mnt *next;
++};
++
++/* Default context */
++
++static struct parse_context default_context = {
++	NULL,			/* No mount options */
++	NULL,			/* No map wide macros */
++	NULL			/* The substvar local vars table */
++};
++
++/* Free all storage associated with this context */
++static void kill_context(struct parse_context *ctxt)
++{
++	macro_lock();
++	macro_free_table(ctxt->subst);
++	macro_unlock();
++	if (ctxt->optstr)
++		free(ctxt->optstr);
++	if (ctxt->macros)
++		free(ctxt->macros);
++	free(ctxt);
++}
++
++int parse_init(int argc, const char *const *argv, void **context)
++{
++	struct parse_context *ctxt;
++	char buf[MAX_ERR_BUF];
++
++	sel_hash_init();
++
++	/* Set up context and escape chain */
++
++	if (!(ctxt = (struct parse_context *) malloc(sizeof(struct parse_context)))) {
++		char *estr = strerror_r(errno, buf, MAX_ERR_BUF);
++		logerr(MODPREFIX "malloc: %s", estr);
++		*context = NULL;
++		return 1;
++	}
++	*context = (void *) ctxt;
++
++	*ctxt = default_context;
++
++	/* We only need this once.  NFS mounts are so common that we cache
++	   this module. */
++	instance_mutex_lock();
++	if (mount_nfs)
++		init_ctr++;
++	else {
++		if ((mount_nfs = open_mount("nfs", MODPREFIX))) {
++			init_ctr++;
++		} else {
++			kill_context(ctxt);
++			*context = NULL;
++			instance_mutex_unlock();
++			return 1;
++		}
++	}
++	instance_mutex_unlock();
++
++	return 0;
++}
++
++static void update_with_defaults(struct amd_entry *defaults,
++				 struct amd_entry *entry,
++				 struct substvar *sv)
++{
++	const struct substvar *v;
++	unsigned long fstype = entry->flags & AMD_MOUNT_TYPE_MASK;
++	char *tmp;
++
++	if (fstype == AMD_MOUNT_TYPE_NONE) {
++		unsigned long deftype = defaults->flags & AMD_MOUNT_TYPE_MASK;
++		if (deftype != AMD_MOUNT_TYPE_NONE)
++			entry->flags |= (defaults->flags & AMD_MOUNT_TYPE_MASK);
++		else {
++			entry->flags = AMD_MOUNT_TYPE_NFS;
++			tmp = strdup("nfs");
++			if (tmp)
++				entry->type = tmp;
++		}
++	}
++
++	if (!entry->type && defaults->type) {
++		tmp = strdup(defaults->type);
++		if (tmp)
++			entry->type = tmp;
++	}
++
++	if (!entry->map_type && defaults->map_type) {
++		tmp = strdup(defaults->map_type);
++		if (tmp)
++			entry->map_type = tmp;
++	}
++
++	if (!entry->pref && defaults->pref) {
++		tmp = strdup(defaults->pref);
++		if (tmp)
++			entry->pref = tmp;
++	}
++
++	if (!entry->fs && defaults->fs) {
++		tmp = strdup(defaults->fs);
++		if (tmp)
++			entry->fs = tmp;
++	}
++
++	if (!entry->rfs && defaults->rfs) {
++		tmp = strdup(defaults->rfs);
++		if (tmp)
++			entry->rfs = tmp;
++	}
++
++	if (!entry->rhost && defaults->rhost) {
++		tmp = strdup(defaults->rhost);
++		if (tmp)
++			entry->rhost = tmp;
++	}
++
++	if (!entry->opts && defaults->opts) {
++		tmp = merge_options(defaults->opts, entry->opts);
++		if (tmp)
++			entry->opts = tmp;
++	}
++
++	if (!entry->addopts && defaults->addopts) {
++		tmp = merge_options(defaults->addopts, entry->addopts);
++		if (tmp)
++			entry->addopts = tmp;
++	}
++
++	if (!entry->remopts && defaults->remopts) {
++		tmp = merge_options(defaults->remopts, entry->remopts);
++		if (tmp)
++			entry->remopts = tmp;
++	}
++
++	return;
++}
++
++static char *normalize_hostname(unsigned int logopt, const char *host,
++				unsigned int flags, struct substvar *sv)
++{
++	struct addrinfo hints, *ni;
++	char *name;
++	int ret;
++
++	if (!(flags & CONF_NORMALIZE_HOSTNAMES))
++		name = strdup(host);
++	else {
++		memset(&hints, 0, sizeof(hints));
++		hints.ai_flags = AI_CANONNAME;
++		hints.ai_family = AF_UNSPEC;
++		hints.ai_socktype = SOCK_DGRAM;
++
++		ret = getaddrinfo(host, NULL, &hints, &ni);
++		if (ret) {
++			error(logopt, "hostname lookup failed: %s", gai_strerror(ret));
++			return NULL;
++		}
++		name = strdup(ni->ai_canonname);
++		freeaddrinfo(ni);
++	}
++
++	if (!name)
++		return NULL;
++
++	if (flags & CONF_DOMAIN_STRIP) {
++		const struct substvar *v = macro_findvar(sv, "hostd", 5);
++		if (v) {
++			char *d1 = strchr(name, '.');
++			if (d1) {
++				char *d2 = strchr(v->val, '.');
++				if (d2 && !strcmp(d1, d2))
++					*d1 = '\0';
++			}
++		}
++	}
++
++	return name;
++}
++
++static struct substvar *expand_entry(struct autofs_point *ap,
++				     struct amd_entry *entry,
++				     unsigned int flags,
++				     struct substvar *sv)
++{
++	unsigned int logopt = ap->logopt;
++	char *expand;
++
++	if (entry->rhost) {
++		char *host = strdup(entry->rhost);
++		char *nn;
++		if (!host) {
++			error(ap->logopt, MODPREFIX
++			      "failed to allocate storage for rhost");
++			goto next;
++		}
++		if (expand_selectors(ap, host, &expand, sv)) {
++			free(host);
++			host = expand;
++		}
++		nn = normalize_hostname(ap->logopt, host, flags, sv);
++		if (!nn)
++			sv = macro_addvar(sv, "rhost", 5, host);
++		else {
++			sv = macro_addvar(sv, "rhost", 5, nn);
++			free(host);
++			host = nn;
++		}
++		debug(logopt, MODPREFIX
++		      "rhost expand(\"%s\") -> %s", entry->rhost, host);
++		free(entry->rhost);
++		entry->rhost = host;
++	}
++next:
++	if (entry->sublink) {
++		if (expand_selectors(ap, entry->sublink, &expand, sv)) {
++			debug(logopt, MODPREFIX
++			      "sublink expand(\"%s\") -> %s",
++			      entry->sublink, expand);
++			free(entry->sublink);
++			entry->sublink = expand;
++		}
++		sv = macro_addvar(sv, "sublink", 7, entry->sublink);
++	}
++
++	if (entry->rfs) {
++		if (expand_selectors(ap, entry->rfs, &expand, sv)) {
++			debug(logopt, MODPREFIX
++			      "rfs expand(\"%s\") -> %s", entry->rfs, expand);
++			free(entry->rfs);
++			entry->rfs = expand;
++		}
++		sv = macro_addvar(sv, "rfs", 3, entry->rfs);
++	}
++
++	if (entry->fs) {
++		if (expand_selectors(ap, entry->fs, &expand, sv)) {
++			debug(logopt, MODPREFIX
++			      "fs expand(\"%s\") -> %s", entry->fs, expand);
++			free(entry->fs);
++			entry->fs = expand;
++		}
++		sv = macro_addvar(sv, "fs", 2, entry->fs);
++	}
++
++	if (entry->opts) {
++		if (expand_selectors(ap, entry->opts, &expand, sv)) {
++			debug(logopt, MODPREFIX
++			      "ops expand(\"%s\") -> %s", entry->opts, expand);
++			free(entry->opts);
++			entry->opts = expand;
++		}
++		sv = macro_addvar(sv, "opts", 4, entry->opts);
++	}
++
++	if (entry->addopts) {
++		if (expand_selectors(ap, entry->addopts, &expand, sv)) {
++			debug(logopt, MODPREFIX
++			      "addopts expand(\"%s\") -> %s",
++			      entry->addopts, expand);
++			free(entry->addopts);
++			entry->addopts = expand;
++		}
++		sv = macro_addvar(sv, "addopts", 7, entry->addopts);
++	}
++
++	if (entry->remopts) {
++		if (expand_selectors(ap, entry->remopts, &expand, sv)) {
++			debug(logopt, MODPREFIX
++			      "remopts expand(\"%s\") -> %s",
++			      entry->remopts, expand);
++			free(entry->remopts);
++			entry->remopts = expand;
++		}
++		sv = macro_addvar(sv, "remopts", 7, entry->remopts);
++	}
++
++	return sv;
++}
++
++static void expand_merge_options(struct autofs_point *ap,
++				 struct amd_entry *entry,
++				 struct substvar *sv)
++{
++	char *tmp;
++
++	if (entry->opts) {
++		if (!expand_selectors(ap, entry->opts, &tmp, sv))
++			error(ap->logopt, MODPREFIX "failed to expand opts");
++		else {
++			free(entry->opts);
++			entry->opts = tmp;
++		}
++	}
++
++	if (entry->addopts) {
++		if (!expand_selectors(ap, entry->addopts, &tmp, sv))
++			error(ap->logopt, MODPREFIX "failed to expand addopts");
++		else {
++			free(entry->addopts);
++			entry->addopts = tmp;
++		}
++	}
++
++	if (entry->remopts) {
++		if (!expand_selectors(ap, entry->remopts, &tmp, sv))
++			error(ap->logopt, MODPREFIX "failed to expand remopts");
++		else {
++			free(entry->remopts);
++			entry->remopts = tmp;
++		}
++	}
++
++	return;
++}
++
++static struct substvar *merge_entry_options(struct autofs_point *ap,
++					    struct amd_entry *entry,
++				            struct substvar *sv)
++{
++	char *tmp;
++
++	if (!entry->addopts)
++		return sv;
++
++	if (entry->opts && entry->remopts &&
++	    !strcmp(entry->opts, entry->remopts)) {
++		expand_merge_options(ap, entry, sv);
++		tmp = merge_options(entry->opts, entry->addopts);
++		if (tmp) {
++			info(ap->logopt, MODPREFIX
++			     "merge remopts \"%s\" addopts \"%s\" => \"%s\"",
++			      entry->opts, entry->addopts, tmp);
++			free(entry->opts);
++			entry->opts = tmp;
++			sv = macro_addvar(sv, "opts", 4, entry->opts);
++		}
++		tmp = strdup(entry->opts);
++		if (tmp) {
++			free(entry->remopts);
++			entry->remopts = tmp;
++			sv = macro_addvar(sv, "remopts", 7, entry->remopts);
++		}
++		return sv;
++	}
++
++	expand_merge_options(ap, entry, sv);
++
++	if (entry->opts && entry->addopts) {
++		tmp = merge_options(entry->opts, entry->addopts);
++		if (tmp) {
++			info(ap->logopt, MODPREFIX
++			     "merge opts \"%s\" addopts \"%s\" => \"%s\"",
++			      entry->opts, entry->addopts, tmp);
++			free(entry->opts);
++			entry->opts = tmp;
++			sv = macro_addvar(sv, "opts", 4, entry->opts);
++		}
++	} else if (entry->addopts) {
++		tmp = strdup(entry->addopts);
++		if (tmp) {
++			info(ap->logopt, MODPREFIX
++			     "opts add addopts \"%s\" => \"%s\"", entry->addopts, tmp);
++			entry->opts = tmp;
++			sv = macro_addvar(sv, "opts", 4, entry->opts);
++		}
++	}
++
++	expand_merge_options(ap, entry, sv);
++
++	if (entry->remopts && entry->addopts) {
++		tmp = merge_options(entry->remopts, entry->addopts);
++		if (tmp) {
++			info(ap->logopt, MODPREFIX
++			     "merge remopts \"%s\" addopts \"%s\" => \"%s\"",
++			      entry->remopts, entry->addopts, tmp);
++			free(entry->remopts);
++			entry->remopts = tmp;
++			sv = macro_addvar(sv, "remopts", 7, entry->remopts);
++		}
++	} else if (entry->addopts) {
++		tmp = strdup(entry->addopts);
++		if (tmp) {
++			info(ap->logopt, MODPREFIX
++			     "remopts add addopts \"%s\" => \"%s\"",
++			     entry->addopts, tmp);
++			entry->remopts = tmp;
++			sv = macro_addvar(sv, "remopts", 7, entry->remopts);
++		}
++	}
++
++	return sv;
++}
++
++static int do_auto_mount(struct autofs_point *ap, const char *name,
++			 struct amd_entry *entry, unsigned int flags)
++{
++	char target[PATH_MAX + 1];
++	int ret;
++
++	if (!entry->map_type)
++		strcpy(target, entry->fs);
++	else {
++		strcpy(target, entry->map_type);
++		strcat(target, ",amd:");
++		strcat(target, entry->fs);
++	}
++
++	ret = do_mount(ap, ap->path,
++		       name, strlen(name), target, "autofs", NULL);
++	if (!ret) {
++		struct autofs_point *sm;
++		sm = master_find_submount(ap, entry->path);
++		if (sm) {
++			sm->pref = entry->pref;
++			entry->pref = NULL;
++		}
++	}
++
++	return ret;
++}
++
++static int do_link_mount(struct autofs_point *ap, const char *name,
++			 struct amd_entry *entry, unsigned int flags)
++{
++	char target[PATH_MAX + 1];
++	int ret;
++
++	if (entry->sublink)
++		strcpy(target, entry->sublink);
++	else
++		strcpy(target, entry->fs);
++
++	if (!(flags & CONF_AUTOFS_USE_LOFS))
++		goto symlink;
++
++	/* For a sublink this might cause an external mount */
++	ret = do_mount(ap, ap->path,
++		       name, strlen(name), target, "bind", entry->opts);
++	if (!ret)
++		goto out;
++
++	debug(ap->logopt, MODPREFIX "bind mount failed, symlinking");
++
++symlink:
++	ret = do_mount(ap, ap->path,
++		       name, strlen(name), target, "bind", "symlink");
++	if (!ret)
++		goto out;
++
++	error(ap->logopt, MODPREFIX
++	      "failed to symlink %s to %s", entry->path, target);
++
++	if (entry->sublink) {
++		/* failed to complete sublink mount */
++		if (ext_mount_remove(&entry->ext_mount, entry->fs))
++			umount_ent(ap, entry->fs);
++	}
++out:
++	return ret;
++}
++
++static int do_nfs_mount(struct autofs_point *ap, const char *name,
++			struct amd_entry *entry, unsigned int flags)
++{
++	char target[PATH_MAX + 1];
++	int ret = 0;
++
++	strcpy(target, entry->rhost);
++	strcat(target, ":");
++	strcat(target, entry->rfs);
++
++	if (!entry->sublink) {
++		ret = mount_nfs->mount_mount(ap, ap->path, name, strlen(name),
++					     target, entry->type, entry->opts,
++					     mount_nfs->context);
++	} else {
++		if (!is_mounted(_PATH_MOUNTED, entry->fs, MNTS_REAL)) {
++			ret = mount_nfs->mount_mount(ap, entry->fs, "/", 1,
++						target, entry->type, entry->opts,
++						mount_nfs->context);
++			if (ret)
++				goto out;
++		}
++		/* We might be using an external mount */
++		ext_mount_add(&entry->ext_mount, entry->fs);
++		ret = do_link_mount(ap, name, entry, flags);
++	}
++out:
++	return ret;
++}
++
++static int do_host_mount(struct autofs_point *ap, const char *name,
++			 struct amd_entry *entry, struct map_source *source,
++			 unsigned int flags)
++{
++	struct lookup_mod *lookup;
++	struct mapent *me;
++	const char *argv[2];
++	int ret = 1;
++
++	argv[0] = entry->opts;
++	argv[1] = NULL;
++
++	lookup = open_lookup("hosts", MODPREFIX, NULL, 1, argv);
++	if (!lookup) {
++		debug(ap->logopt, "open lookup module hosts failed");
++		goto out;
++	}
++
++	me = cache_lookup_distinct(source->mc, name);
++	if (me)
++		cache_push_mapent(me, NULL);
++
++	master_source_current_wait(ap->entry);
++	ap->entry->current = source;
++
++	ret = lookup->lookup_mount(ap, name, strlen(name), lookup->context);
++
++	close_lookup(lookup);
++out:
++	return ret;
++}
++
++static int amd_mount(struct autofs_point *ap, const char *name,
++		     struct amd_entry *entry, struct map_source *source,
++		     struct substvar *sv, unsigned int flags,
++		     struct parse_context *ctxt)
++{
++	unsigned long fstype = entry->flags & AMD_MOUNT_TYPE_MASK;
++	int ret = 1;
++
++	switch (fstype) {
++	case AMD_MOUNT_TYPE_AUTO:
++		ret = do_auto_mount(ap, name, entry, flags);
++		break;
++
++	case AMD_MOUNT_TYPE_NFS:
++		ret = do_nfs_mount(ap, name, entry, flags);
++		break;
++
++	case AMD_MOUNT_TYPE_LINK:
++		ret = do_link_mount(ap, name, entry, flags);
++		break;
++
++	case AMD_MOUNT_TYPE_HOST:
++		ret = do_host_mount(ap, name, entry, source, flags);
++		break;
++
++	default:
++		info(ap->logopt,
++		     MODPREFIX "unkown file system type %x", fstype);
++		break;
++	}
++
++	return ret;
++}
++
++void dequote_entry(struct autofs_point *ap, struct amd_entry *entry)
++{
++	char *res;
++
++	if (entry->pref) {
++		res = dequote(entry->pref, strlen(entry->pref), ap->logopt);
++		if (res) {
++			debug(ap->logopt,
++			      MODPREFIX "pref dequote(\"%.*s\") -> %s",
++			      strlen(entry->pref), entry->pref, res);
++			free(entry->pref);
++			entry->pref = res;
++		}
++	}
++
++	if (entry->sublink) {
++		res = dequote(entry->sublink, strlen(entry->sublink), ap->logopt);
++		if (res) {
++			debug(ap->logopt,
++			      MODPREFIX "sublink dequote(\"%.*s\") -> %s",
++			      strlen(entry->sublink), entry->sublink, res);
++			free(entry->sublink);
++			entry->sublink = res;
++		}
++	}
++
++	if (entry->fs) {
++		res = dequote(entry->fs, strlen(entry->fs), ap->logopt);
++		if (res) {
++			debug(ap->logopt,
++			      MODPREFIX "fs dequote(\"%.*s\") -> %s",
++			      strlen(entry->fs), entry->fs, res);
++			free(entry->fs);
++			entry->fs = res;
++		}
++	}
++
++	if (entry->rfs) {
++		res = dequote(entry->rfs, strlen(entry->rfs), ap->logopt);
++		if (res) {
++			debug(ap->logopt,
++			      MODPREFIX "rfs dequote(\"%.*s\") -> %s",
++			      strlen(entry->rfs), entry->rfs, res);
++			free(entry->rfs);
++			entry->rfs = res;
++		}
++	}
++
++	if (entry->opts) {
++		res = dequote(entry->opts, strlen(entry->opts), ap->logopt);
++		if (res) {
++			debug(ap->logopt,
++			      MODPREFIX "ops dequote(\"%.*s\") -> %s",
++			      strlen(entry->opts), entry->opts, res);
++			free(entry->opts);
++			entry->opts = res;
++		}
++	}
++
++	if (entry->remopts) {
++		res = dequote(entry->remopts, strlen(entry->remopts), ap->logopt);
++		if (res) {
++			debug(ap->logopt,
++			      MODPREFIX "remopts dequote(\"%.*s\") -> %s",
++			      strlen(entry->remopts), entry->remopts, res);
++			free(entry->remopts);
++			entry->remopts = res;
++		}
++	}
++
++	if (entry->addopts) {
++		res = dequote(entry->addopts, strlen(entry->addopts), ap->logopt);
++		if (res) {
++			debug(ap->logopt,
++			      MODPREFIX "addopts dequote(\"%.*s\") -> %s",
++			      strlen(entry->addopts), entry->addopts, res);
++			free(entry->addopts);
++			entry->addopts = res;
++		}
++	}
++
++	return;
++}
++
++static void normalize_sublink(unsigned int logopt,
++			      struct amd_entry *entry, struct substvar *sv)
++{
++	char *new;
++	size_t len;
++
++	if (entry->sublink && *entry->sublink != '/') {
++		len = strlen(entry->fs) + strlen(entry->sublink) + 2;
++		new = malloc(len);
++		if (!new) {
++			error(logopt, MODPREFIX
++			      "error: couldn't allocate storage for sublink");
++			return;
++		}
++		strcpy(new, entry->fs);
++		strcat(new, "/");
++		strcat(new, entry->sublink);
++		debug(logopt, MODPREFIX
++		      "rfs dequote(\"%.*s\") -> %s",
++		      strlen(entry->sublink), entry->sublink, new);
++		free(entry->sublink);
++		entry->sublink = new;
++	}
++	return;
++}
++
++static struct amd_entry *dup_defaults_entry(struct amd_entry *defaults)
++{
++	struct amd_entry *entry;
++	char *tmp;
++
++	entry = malloc(sizeof(struct amd_entry));
++	if (!entry)
++		return NULL;
++	memset(entry, 0, sizeof(struct amd_entry));
++
++	entry->flags = defaults->flags;
++
++	if (defaults->type) {
++		tmp = strdup(defaults->type);
++		if (tmp)
++			entry->type = tmp;
++	}
++
++	if (defaults->map_type) {
++		tmp = strdup(defaults->map_type);
++		if (tmp)
++			entry->map_type = tmp;
++	}
++
++	if (defaults->pref) {
++		tmp = strdup(defaults->pref);
++		if (tmp)
++			entry->pref = tmp;
++	}
++
++	if (defaults->fs) {
++		tmp = strdup(defaults->fs);
++		if (tmp)
++			entry->fs = tmp;
++	}
++
++	if (defaults->rfs) {
++		tmp = strdup(defaults->rfs);
++		if (tmp)
++			entry->rfs = tmp;
++	}
++
++	if (defaults->rhost) {
++		tmp = strdup(defaults->rhost);
++		if (tmp)
++			entry->rhost = tmp;
++	}
++
++	if (defaults->opts) {
++		tmp = strdup(defaults->opts);
++		if (tmp)
++			entry->opts = tmp;
++	}
++
++	if (defaults->addopts) {
++		tmp = strdup(defaults->addopts);
++		if (tmp)
++			entry->addopts = tmp;
++	}
++
++	if (defaults->remopts) {
++		tmp = strdup(defaults->remopts);
++		if (tmp)
++			entry->remopts = tmp;
++	}
++
++	INIT_LIST_HEAD(&entry->list);
++
++	return entry;
++}
++
++struct amd_entry *make_default_entry(struct autofs_point *ap,
++				     struct substvar *sv)
++{
++	char *defaults = "opts:=rw,defaults";
++	struct amd_entry *defaults_entry;
++	struct list_head dflts;
++
++	INIT_LIST_HEAD(&dflts);
++	if (amd_parse_list(ap, defaults, &dflts, &sv))
++		return NULL;
++	defaults_entry = list_entry(dflts.next, struct amd_entry, list);
++	list_del_init(&defaults_entry->list);
++	/* The list should now be empty .... */
++	free_amd_entry_list(&dflts);
++	return defaults_entry;
++}
++
++static struct amd_entry *select_default_entry(struct autofs_point *ap,
++					      struct list_head *entries,
++					      struct substvar *sv)
++{
++	unsigned long flags = conf_amd_get_flags(ap->path);
++	struct amd_entry *defaults_entry = NULL;
++	struct amd_entry *entry_default = NULL;
++	struct list_head *p, *head;
++
++	if (!(flags & CONF_SELECTORS_IN_DEFAULTS))
++		goto no_sel;
++
++	head = entries;
++	p = head->next;
++	while (p != head) {
++		struct amd_entry *this = list_entry(p, struct amd_entry, list);
++
++		p = p->next;
++
++		if (this->flags & AMD_DEFAULTS_MERGE) {
++			if (entry_default)
++				free_amd_entry(entry_default);
++			list_del_init(&this->list);
++			entry_default = this;
++			continue;
++		} else if (this->flags & AMD_DEFAULTS_RESET) {
++			struct amd_entry *new;
++			new = dup_defaults_entry(defaults_entry);
++			if (new) {
++				free_amd_entry(entry_default);
++				entry_default = new;
++			}
++			list_del_init(&this->list);
++			free_amd_entry(this);
++			continue;
++		}
++	}
++
++	/* Not strickly amd semantics but ... */
++	if (!defaults_entry && entry_default) {
++		defaults_entry = entry_default;
++		goto done;
++	}
++
++	if (!defaults_entry) {
++		debug(ap->logopt, MODPREFIX
++		      "no matching selector(s) found in defaults, "
++		      "using internal defaults");
++		goto ret_default;
++	}
++
++	goto done;
++
++no_sel:
++	if (list_empty(entries))
++		goto ret_default;
++
++	defaults_entry = list_entry(entries->next, struct amd_entry, list);
++	list_del_init(&defaults_entry->list);
++	if (!list_empty(entries)) {
++		free_amd_entry(defaults_entry);
++		goto ret_default;
++	}
++done:
++	/*merge_entry_options(ap, defaults_entry, sv);*/
++	/*normalize_sublink(ap->logopt, defaults_entry, sv);*/
++	return defaults_entry;
++
++ret_default:
++	return make_default_entry(ap, sv);
++}
++
++static struct amd_entry *get_defaults_entry(struct autofs_point *ap,
++					    const char *defaults,
++					    struct substvar *sv)
++{
++	struct amd_entry *entry;
++	struct list_head dflts;
++
++	INIT_LIST_HEAD(&dflts);
++
++	entry = NULL;
++	if (!defaults)
++		goto out;
++	else {
++		char *expand;
++		if (!expand_selectors(ap, defaults, &expand, sv))
++			goto out;
++		if (amd_parse_list(ap, expand, &dflts, &sv))
++			goto out;
++		entry = select_default_entry(ap, &dflts, sv);
++		free(expand);
++	}
++
++	return entry;
++out:
++	return make_default_entry(ap, sv);
++}
++
++int parse_mount(struct autofs_point *ap, const char *name,
++		int name_len, const char *mapent, void *context)
++{
++	struct parse_context *ctxt = (struct parse_context *) context;
++	unsigned int flags = conf_amd_get_flags(ap->path);
++	struct substvar *sv = NULL;
++	struct map_source *source;
++	struct mapent_cache *mc;
++	struct mapent *me;
++	struct list_head entries, *p, *head;
++	struct amd_entry *defaults_entry;
++	struct amd_entry *cur_defaults;
++	char *defaults;
++	char *pmapent;
++	int len, rv = 1;
++	int cur_state;
++	int ret;
++
++	source = ap->entry->current;
++	ap->entry->current = NULL;
++	master_source_current_signal(ap->entry);
++
++	mc = source->mc;
++
++	if (!mapent) {
++		warn(ap->logopt, MODPREFIX "error: empty map entry");
++		return 1;
++	}
++
++	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cur_state);
++
++	len = expand_selectors(ap, mapent, &pmapent, sv);
++	if (!len) {
++		macro_free_table(sv);
++		pthread_setcancelstate(cur_state, NULL);
++		return 1;
++	}
++
++	pthread_setcancelstate(cur_state, NULL);
++
++	debug(ap->logopt, MODPREFIX "expanded mapent: %s", pmapent);
++
++	defaults = conf_amd_get_map_defaults(ap->path);
++	if (defaults) {
++		debug(ap->logopt, MODPREFIX
++		      "using map_defaults %s for %s", defaults, ap->path);
++	} else if ((me = cache_lookup_distinct(mc, "/defaults"))) {
++		defaults = strdup(me->mapent);
++		if (defaults)
++			debug(ap->logopt, MODPREFIX
++			      "using /defaults %s from map", defaults);
++		else {
++			char buf[MAX_ERR_BUF];
++			char *estr = strerror_r(errno, buf, MAX_ERR_BUF);
++			error(ap->logopt, MODPREFIX "malloc: %s", estr);
++		}
++	}
++
++	defaults_entry = get_defaults_entry(ap, defaults, sv);
++	if (!defaults_entry) {
++		error(ap->logopt, MODPREFIX "failed to get a defaults entry");
++		if (defaults)
++			free(defaults);
++		free(pmapent);
++		macro_free_table(sv);
++		return 1;
++	}
++	if (defaults)
++		free(defaults);
++
++	INIT_LIST_HEAD(&entries);
++
++	ret = amd_parse_list(ap, pmapent, &entries, &sv);
++	if (ret) {
++		error(ap->logopt,
++		      MODPREFIX "failed to parse entry: %s", pmapent);
++		free(pmapent);
++		goto done;
++	}
++
++	free(pmapent);
++
++	if (list_empty(&entries)) {
++		error(ap->logopt, MODPREFIX "no location found after parse");
++		goto done;
++	}
++
++	cur_defaults = dup_defaults_entry(defaults_entry);
++	if (!cur_defaults) {
++		error(ap->logopt, MODPREFIX
++		      "failed to duplicate defaults entry");
++		goto done;
++	}
++
++	head = &entries;
++	p = head->next;
++	while (p != head) {
++		struct amd_entry *this = list_entry(p, struct amd_entry, list);
++		p = p->next;
++
++		if (this->flags & AMD_DEFAULTS_MERGE) {
++			free_amd_entry(cur_defaults);
++			list_del_init(&this->list);
++			cur_defaults = this;
++			continue;
++		} else if (this->flags & AMD_DEFAULTS_RESET) {
++			struct amd_entry *new;
++			new = dup_defaults_entry(defaults_entry);
++			if (new) {
++				free_amd_entry(cur_defaults);
++				cur_defaults = new;
++			}
++			list_del_init(&this->list);
++			free_amd_entry(this);
++			continue;
++		}
++
++		update_with_defaults(cur_defaults, this, sv);
++		sv = expand_entry(ap, this, flags, sv);
++		sv = merge_entry_options(ap, this, sv);
++		normalize_sublink(ap->logopt, this, sv);
++
++		dequote_entry(ap, this);
++
++		rv = amd_mount(ap, name, this, source, sv, flags, ctxt);
++		if (!rv)
++			break;
++	}
++	free_amd_entry(cur_defaults);
++
++	if (rv)
++		debug(ap->logopt, "no more locations to try, returning fail");
++done:
++	free_amd_entry_list(&entries);
++	free_amd_entry(defaults_entry);
++	macro_free_table(sv);
++
++	return rv;
++}
++
++int parse_done(void *context)
++{
++	int rv = 0;
++	struct parse_context *ctxt = (struct parse_context *) context;
++
++	instance_mutex_lock();
++	if (--init_ctr == 0) {
++		rv = close_mount(mount_nfs);
++		mount_nfs = NULL;
++	}
++	instance_mutex_unlock();
++	if (ctxt)
++		kill_context(ctxt);
++
++	return rv;
++}

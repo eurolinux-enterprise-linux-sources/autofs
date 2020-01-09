@@ -1,0 +1,47 @@
+autofs-5.0.5 - fix lsb service name in init script
+
+From: Ian Kent <raven@themaw.net>
+
+The "Provides:" in the init script header incorrectly uses $autofs
+instead of autofs. This isn't correct as using names starting with
+a $ is reserved for standards-defined facilities.
+---
+
+ CHANGELOG             |    1 +
+ redhat/autofs.init.in |    2 +-
+ samples/rc.autofs.in  |    2 +-
+ 3 files changed, 3 insertions(+), 2 deletions(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -277,6 +277,7 @@
+ - update map_hash_table_size description.
+ - add configuration option to use fqdn in mounts.
+ - fix out of order call in program map lookup.
++- fix lsb service name in init script.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/redhat/autofs.init.in
++++ autofs-5.0.5/redhat/autofs.init.in
+@@ -8,7 +8,7 @@
+ # description: Automounts filesystems on demand
+ #
+ ### BEGIN INIT INFO
+-# Provides: $autofs
++# Provides: autofs
+ # Required-Start: $network $ypbind
+ # Required-Stop: $network $ypbind
+ # Default-Start: 3 4 5
+--- autofs-5.0.5.orig/samples/rc.autofs.in
++++ autofs-5.0.5/samples/rc.autofs.in
+@@ -7,7 +7,7 @@
+ #
+ #
+ ### BEGIN INIT INFO
+-# Provides: $autofs
++# Provides: autofs
+ # Required-Start: $network $ypbind
+ # Required-Stop: $network $ypbind
+ # Default-Start: 3 4 5

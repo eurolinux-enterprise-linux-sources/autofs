@@ -1,0 +1,32 @@
+autofs-5.1.0 - fix hosts map options check in lookup_amd_instance()
+
+From: Ian Kent <ikent@redhat.com>
+
+Ongoing bug fixes have caused a hosts map source check in lookup_amd_instance()
+to be inconsistent and consequently not find the expected map source.
+---
+ CHANGELOG       |    1 +
+ daemon/lookup.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -237,6 +237,7 @@
+ - fix copy and paste error in dup_defaults_entry().
+ - add mutex call return check in defaults.c.
+ - force disable browse mode for amd format maps.
++- fix hosts map options check in lookup_amd_instance().
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/daemon/lookup.c
++++ autofs-5.0.5/daemon/lookup.c
+@@ -841,7 +841,7 @@ static int lookup_amd_instance(struct au
+ 		return NSS_STATUS_UNKNOWN;
+ 	}
+ 
+-	if (entry->opts) {
++	if (entry->opts && *entry->opts) {
+ 		argv[0] = entry->opts;
+ 		argv[1] = NULL;
+ 		pargv = argv;

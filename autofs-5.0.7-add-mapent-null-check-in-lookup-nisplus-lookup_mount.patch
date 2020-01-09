@@ -1,0 +1,22 @@
+autofs-5.0.7 - add mapent null check in lookup_nisplus.c:lookup_mount()
+
+From: Ian Kent <raven@themaw.net>
+
+malloc(3) could return null under low memory conditions, add a null check
+for this case.
+---
+ modules/lookup_nisplus.c |    3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/modules/lookup_nisplus.c
++++ autofs-5.0.5/modules/lookup_nisplus.c
+@@ -576,7 +576,8 @@ int lookup_mount(struct autofs_point *ap
+ 		if (me && (me->source == source || *me->key == '/')) {
+ 			mapent_len = strlen(me->mapent);
+ 			mapent = malloc(mapent_len + 1);
+-			strcpy(mapent, me->mapent);
++			if (mapent)
++				strcpy(mapent, me->mapent);
+ 		}
+ 	}
+ 	cache_unlock(mc);

@@ -1,0 +1,111 @@
+autofs-5.1.0-beta1 - fix hash on confg option add and delete
+
+From: Ian Kent <raven@themaw.net>
+
+The hash calculation needs to be the same for upper and lower case config
+options. The config entry add and delete functions weren't doing that.
+---
+ CHANGELOG      |    1 +
+ lib/defaults.c |   40 ++++++++++++++++++++++------------------
+ 2 files changed, 23 insertions(+), 18 deletions(-)
+
+diff --git a/CHANGELOG b/CHANGELOG
+index 3565ab9..70414d2 100644
+--- a/CHANGELOG
++++ b/CHANGELOG
+@@ -213,6 +213,7 @@
+ - fix expire when server not responding.
+ - fix ldap_uri config update.
+ - fix typo in conf_load_autofs_defaults().
++- fix hash on confg option add and delete.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+diff --git a/lib/defaults.c b/lib/defaults.c
+index 473f6e3..3dbc13e 100644
+--- a/lib/defaults.c
++++ b/lib/defaults.c
+@@ -524,12 +524,24 @@ error:
+ 	return 0;
+ }
+ 
++static u_int32_t get_hash(const char *key, unsigned int size)
++{
++	const char *pkey = key;
++	char lkey[PATH_MAX + 1];
++	char *plkey = &lkey[0];
++
++	while (*pkey)
++		*plkey++ = tolower(*pkey++);
++	*plkey = '\0';
++	return hash(lkey, size);
++}
++
+ static int conf_add(const char *section, const char *key, const char *value, unsigned long flags)
+ {
+ 	struct conf_option *co;
+ 	char *sec, *name, *val, *tmp;
+ 	unsigned int size = CFG_TABLE_SIZE;
+-	u_int32_t index;
++	u_int32_t key_hash;
+ 	int ret = CFG_FAIL;
+ 
+ 	sec = name = val = tmp = NULL;
+@@ -568,12 +580,12 @@ static int conf_add(const char *section, const char *key, const char *value, uns
+ 	if (flags & CONF_ENV && value)
+ 		setenv(name, value, 0);
+ 
+-	index = hash(key, size);
+-	if (!config->hash[index])
+-		config->hash[index] = co;
++	key_hash = get_hash(key, size);
++	if (!config->hash[key_hash])
++		config->hash[key_hash] = co;
+ 	else {
+ 		struct conf_option *last = NULL, *next;
+-		next = config->hash[index];
++		next = config->hash[key_hash];
+ 		while (next) {
+ 			last = next;
+ 			next = last->next;
+@@ -598,9 +610,11 @@ static void conf_delete(const char *section, const char *key)
+ {
+ 	struct conf_option *co, *last;
+ 	unsigned int size = CFG_TABLE_SIZE;
++	u_int32_t key_hash;
+ 
+ 	last = NULL;
+-	for (co = config->hash[hash(key, size)]; co != NULL; co = co->next) {
++	key_hash = get_hash(key, size);
++	for (co = config->hash[key_hash]; co != NULL; co = co->next) {
+ 		if (strcasecmp(section, co->section))
+ 			continue;
+ 		if (!strcasecmp(key, co->name))
+@@ -613,6 +627,8 @@ static void conf_delete(const char *section, const char *key)
+ 
+ 	if (last)
+ 		last->next = co->next;
++	else
++		config->hash[key_hash] = co->next;
+ 
+ 	free(co->section);
+ 	free(co->name);
+@@ -661,18 +677,6 @@ error:
+ 	return ret;
+ }
+ 
+-static u_int32_t get_hash(const char *key, unsigned int size)
+-{
+-	const char *pkey = key;
+-	char lkey[PATH_MAX + 1];
+-	char *plkey = &lkey[0];
+-
+-	while (*pkey)
+-		*plkey++ = tolower(*pkey++);
+-	*plkey = '\0';
+-	return hash(lkey, size);
+-}
+-
+ static struct conf_option *conf_lookup_key(const char *section, const char *key)
+ {
+ 	struct conf_option *co;

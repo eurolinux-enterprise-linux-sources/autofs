@@ -1,0 +1,31 @@
+From d67bad6b4b2db7042c465a3196eb123055a0c120 Mon Sep 17 00:00:00 2001
+From: Niels de Vos <ndevos@redhat.com>
+Date: Mon, 22 Oct 2012 16:40:18 +0200
+Subject: [PATCH] Destroy the socket when rpc_ping_proto() failed for NFSv4
+
+Signed-off-by: Niels de Vos <ndevos@redhat.com>
+---
+ modules/replicated.c |    7 ++++---
+ 1 files changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/modules/replicated.c b/modules/replicated.c
+index bc0aaaf..e3e4483 100644
+--- a/modules/replicated.c
++++ b/modules/replicated.c
+@@ -501,9 +501,10 @@ static unsigned int get_nfs_info(unsigned logopt, struct host *host,
+ 		gettimeofday(&start, &tz);
+ 		status = rpc_ping_proto(rpc_info);
+ 		gettimeofday(&end, &tz);
+-		if (status == -ETIMEDOUT)
+-			return (unsigned int) status;
+-		else if (status > 0) {
++		if (status == -ETIMEDOUT) {
++			supported = status;
++			goto done_ver;
++		} else if (status > 0) {
+ 			double reply;
+ 			if (random_selection) {
+ 				/* Random value between 0 and 1 */
+-- 
+1.7.7.6
+

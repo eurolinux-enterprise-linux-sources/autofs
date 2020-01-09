@@ -1,0 +1,33 @@
+autofs-5.0.9 - amd lookup fix expire of external mounts
+
+From: Ian Kent <raven@themaw.net>
+
+When expiring a submount it's necessary to ensure that any triggers
+that may have been mounted over the top of the submount by its parent
+are umounted so umount_subtree_mounts() is called with the parent ap.
+
+But this can lead to an out of order umount. So far this hasn't been
+a problem but if this happens when expiring an amd mount that refers
+to an external mount the amd mount structure can't be found (since
+we are looking in the parent ap) and subsequently the external mount
+doesn't get checked and umounted.
+
+So restrict the call to umount_subtree_mounts() to umount only offset
+mounts by passing is_autofs_fs as 1 always.
+---
+ daemon/automount.c |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/daemon/automount.c b/daemon/automount.c
+index 9d9ba7b..a6a9321 100644
+--- a/daemon/automount.c
++++ b/daemon/automount.c
+@@ -628,7 +628,7 @@ int umount_multi(struct autofs_point *ap, const char *path, int incl)
+ 	 * parent may have mounted over top of us.
+ 	 */
+ 	if (ap->submount)
+-		left += umount_subtree_mounts(ap->parent, path, is_autofs_fs);
++		left += umount_subtree_mounts(ap->parent, path, 1);
+ 
+ 	left += umount_subtree_mounts(ap, path, is_autofs_fs);
+ 

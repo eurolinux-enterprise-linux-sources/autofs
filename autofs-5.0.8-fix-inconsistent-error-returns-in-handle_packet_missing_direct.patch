@@ -1,0 +1,68 @@
+autofs-5.0.8 - fix inconsistent error returns in handle_packet_missing_direct()
+
+From: Ian Kent <raven@themaw.net>
+
+How to handle mount requests that arrive during a shutdown is a big
+problem.
+
+Currently common cases result in the requesting process being sent a
+fail status and success being returned to the calling autofs process.
+
+There are a number of places where a fail is returned to the calling
+process (such as memeory allocation errors) which should cause the
+daemon to exit. But when a request arrives during a shutdown the
+daemon is usually not ready to shutdown and instead performs recovery
+and returns to a ready state instead of shutting down.
+
+There were a few places in handle_packet_missing_direct() where a fail
+was being returned when a success should have been returned which was
+preventing the completion of the shutdown.
+
+This is not ideal because during a restart of the daemon processes
+requesting a mount could receive a mount failure. But this has been
+the policy for while now and it's very difficult to do in a different
+way.
+---
+ CHANGELOG       |    1 +
+ daemon/direct.c |    6 +++---
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -189,6 +189,7 @@
+ - fix fix map source with type lookup.
+ - fix lookup_nss_mount() map lookup.
+ - dont ignore null cache entries on multi mount umount.
++- fix inconsistent error returns in handle_packet_missing_direct().
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/daemon/direct.c
++++ autofs-5.0.5/daemon/direct.c
+@@ -1382,7 +1382,7 @@ int handle_packet_missing_direct(struct
+ 		master_source_unlock(ap->entry);
+ 		master_mutex_unlock();
+ 		pthread_setcancelstate(state, NULL);
+-		return 1;
++		return 0;
+ 	}
+ 
+ 	len = strlen(me->key);
+@@ -1395,7 +1395,7 @@ int handle_packet_missing_direct(struct
+ 		master_source_unlock(ap->entry);
+ 		master_mutex_unlock();
+ 		pthread_setcancelstate(state, NULL);
+-		return 1;
++		return 0;
+ 	}
+ 
+ 	mt = malloc(sizeof(struct pending_args));
+@@ -1409,7 +1409,7 @@ int handle_packet_missing_direct(struct
+ 		master_source_unlock(ap->entry);
+ 		master_mutex_unlock();
+ 		pthread_setcancelstate(state, NULL);
+-		return 1;
++		return 0;
+ 	}
+ 	memset(mt, 0, sizeof(struct pending_args));
+ 

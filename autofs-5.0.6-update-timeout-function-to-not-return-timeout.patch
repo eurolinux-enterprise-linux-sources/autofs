@@ -1,0 +1,171 @@
+autofs-5.0.6 - update ->timeout() function to not return timeout
+
+From: Ian Kent <ikent@redhat.com>
+
+The value returned by the ->timeout() autofs control interface
+function is not used so make that usage explict by not using a
+pass by address parameter. This saves having to take care to
+always use a temporary storage location when using the function.
+---
+
+ CHANGELOG               |    1 +
+ daemon/direct.c         |    6 +++---
+ daemon/indirect.c       |    2 +-
+ include/dev-ioctl-lib.h |    2 +-
+ lib/dev-ioctl-lib.c     |   15 +++++++--------
+ lib/master_parse.y      |    3 +--
+ lib/mounts.c            |    4 ++--
+ 7 files changed, 16 insertions(+), 17 deletions(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -96,6 +96,7 @@
+ - fix dlopen() error handling in sss module.
+ - fix configure string length tests for sss library.
+ - add nobind option.
++- update ->timeout() function to not return timeout.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/daemon/direct.c
++++ autofs-5.0.5/daemon/direct.c
+@@ -303,7 +303,7 @@ static int unlink_active_mounts(struct a
+ 				return 0;
+ 			}
+ 
+-			ops->timeout(ap->logopt, ioctlfd, &tout);
++			ops->timeout(ap->logopt, ioctlfd, tout);
+ 
+ 			if (save_ioctlfd == -1)
+ 				ops->close(ap->logopt, ioctlfd);
+@@ -425,7 +425,7 @@ int do_mount_autofs_direct(struct autofs
+ 		goto out_umount;
+ 	}
+ 
+-	ops->timeout(ap->logopt, ioctlfd, &timeout);
++	ops->timeout(ap->logopt, ioctlfd, timeout);
+ 	notify_mount_result(ap, me->key, str_direct);
+ 	cache_set_ino_index(me->mc, me->key, st.st_dev, st.st_ino);
+ 	ops->close(ap->logopt, ioctlfd);
+@@ -772,7 +772,7 @@ int mount_autofs_offset(struct autofs_po
+ 		goto out_umount;
+ 	}
+ 
+-	ops->timeout(ap->logopt, ioctlfd, &timeout);
++	ops->timeout(ap->logopt, ioctlfd, timeout);
+ 	cache_set_ino_index(me->mc, me->key, st.st_dev, st.st_ino);
+ 	if (ap->logopt & LOGOPT_DEBUG)
+ 		notify_mount_result(ap, mountpoint, str_offset);
+--- autofs-5.0.5.orig/daemon/indirect.c
++++ autofs-5.0.5/daemon/indirect.c
+@@ -173,7 +173,7 @@ static int do_mount_autofs_indirect(stru
+ 	ap->dev = st.st_dev;	/* Device number for mount point checks */
+ 	ap->exp_runfreq = (timeout + CHECK_RATIO - 1) / CHECK_RATIO;
+ 
+-	ops->timeout(ap->logopt, ap->ioctlfd, &timeout);
++	ops->timeout(ap->logopt, ap->ioctlfd, timeout);
+ 	if (ap->logopt & LOGOPT_DEBUG)
+ 		notify_mount_result(ap, root, str_indirect);
+ 	else
+--- autofs-5.0.5.orig/include/dev-ioctl-lib.h
++++ autofs-5.0.5/include/dev-ioctl-lib.h
+@@ -45,7 +45,7 @@ struct ioctl_ops {
+ 	int (*send_fail)(unsigned int, int, unsigned int, int);
+ 	int (*setpipefd)(unsigned int, int, int);
+ 	int (*catatonic)(unsigned int, int);
+-	int (*timeout)(unsigned int, int, time_t *);
++	int (*timeout)(unsigned int, int, time_t);
+ 	int (*requestor)(unsigned int, int, const char *, uid_t *, gid_t *);
+ 	int (*expire)(unsigned int, int, const char *, unsigned int);
+ 	int (*askumount)(unsigned int, int, unsigned int *);
+--- autofs-5.0.5.orig/lib/dev-ioctl-lib.c
++++ autofs-5.0.5/lib/dev-ioctl-lib.c
+@@ -55,7 +55,7 @@ static int dev_ioctl_send_ready(unsigned
+ static int dev_ioctl_send_fail(unsigned int, int, unsigned int, int);
+ static int dev_ioctl_setpipefd(unsigned int, int, int);
+ static int dev_ioctl_catatonic(unsigned int, int);
+-static int dev_ioctl_timeout(unsigned int, int, time_t *);
++static int dev_ioctl_timeout(unsigned int, int, time_t);
+ static int dev_ioctl_requestor(unsigned int, int, const char *, uid_t *, gid_t *);
+ static int dev_ioctl_expire(unsigned int, int, const char *, unsigned int);
+ static int dev_ioctl_askumount(unsigned int, int, unsigned int *);
+@@ -69,7 +69,7 @@ static int ioctl_close(unsigned int, int
+ static int ioctl_send_ready(unsigned int, int, unsigned int);
+ static int ioctl_send_fail(unsigned int, int, unsigned int, int);
+ static int ioctl_catatonic(unsigned int, int);
+-static int ioctl_timeout(unsigned int, int, time_t *);
++static int ioctl_timeout(unsigned int, int, time_t);
+ static int ioctl_expire(unsigned int, int, const char *, unsigned int);
+ static int ioctl_askumount(unsigned int, int, unsigned int *);
+ 
+@@ -577,25 +577,24 @@ static int ioctl_catatonic(unsigned int
+ }
+ 
+ /* Set the autofs mount timeout */
+-static int dev_ioctl_timeout(unsigned int logopt, int ioctlfd, time_t *timeout)
++static int dev_ioctl_timeout(unsigned int logopt, int ioctlfd, time_t timeout)
+ {
+ 	struct autofs_dev_ioctl param;
+ 
+ 	init_autofs_dev_ioctl(&param);
+ 	param.ioctlfd = ioctlfd;
+-	param.timeout.timeout = *timeout;
++	param.timeout.timeout = timeout;
+ 
+ 	if (ioctl(ctl.devfd, AUTOFS_DEV_IOCTL_TIMEOUT, &param) == -1)
+ 		return -1;
+ 
+-	*timeout = param.timeout.timeout;
+-
+ 	return 0;
+ }
+ 
+-static int ioctl_timeout(unsigned int logopt, int ioctlfd, time_t *timeout)
++static int ioctl_timeout(unsigned int logopt, int ioctlfd, time_t timeout)
+ {
+-	return ioctl(ioctlfd, AUTOFS_IOC_SETTIMEOUT, timeout);
++	time_t tout = timeout;
++	return ioctl(ioctlfd, AUTOFS_IOC_SETTIMEOUT, &tout);
+ }
+ 
+ /*
+--- autofs-5.0.5.orig/lib/master_parse.y
++++ autofs-5.0.5/lib/master_parse.y
+@@ -801,7 +801,6 @@ int master_parse_entry(const char *buffe
+ 	} else {
+ 		struct ioctl_ops *ops = get_ioctl_ops();
+ 		struct autofs_point *ap = entry->ap;
+-		time_t tout = timeout;
+ 
+ 		/*
+ 		 * Second and subsequent instances of a mount point
+@@ -811,7 +810,7 @@ int master_parse_entry(const char *buffe
+ 			ap->exp_timeout = timeout;
+ 			ap->exp_runfreq = (ap->exp_timeout + CHECK_RATIO - 1) / CHECK_RATIO;
+ 			if (ap->ioctlfd != -1 && ap->type == LKP_INDIRECT)
+-				ops->timeout(ap->logopt, ap->ioctlfd, &tout);
++				ops->timeout(ap->logopt, ap->ioctlfd, timeout);
+ 		}
+ 	}
+ 	if (random_selection)
+--- autofs-5.0.5.orig/lib/mounts.c
++++ autofs-5.0.5/lib/mounts.c
+@@ -1400,7 +1400,7 @@ static int remount_active_mount(struct a
+ 
+ 	/* Re-reading the map, set timeout and return */
+ 	if (ap->state == ST_READMAP) {
+-		ops->timeout(ap->logopt, fd, &timeout);
++		ops->timeout(ap->logopt, fd, timeout);
+ 		ops->close(ap->logopt, fd);
+ 		return REMOUNT_READ_MAP;
+ 	}
+@@ -1422,7 +1422,7 @@ static int remount_active_mount(struct a
+ 		ops->close(ap->logopt, fd);
+ 		return REMOUNT_OPEN_FAIL;
+ 	}
+-	ops->timeout(ap->logopt, fd, &timeout);
++	ops->timeout(ap->logopt, fd, timeout);
+ 	if (fstat(fd, &st) == -1) {
+ 		error(ap->logopt,
+ 		      "failed to stat %s mount %s", str_type, path);

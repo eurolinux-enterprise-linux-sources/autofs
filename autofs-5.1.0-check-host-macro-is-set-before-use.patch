@@ -1,0 +1,34 @@
+autofs-5.1.0 - check host macro is set before use
+
+From: Ian Kent <ikent@redhat.com>
+
+Check marco lookup return for ${host} in match_my_name() before using it.
+---
+ CHANGELOG           |    1 +
+ modules/parse_amd.c |    5 +++++
+ 2 files changed, 6 insertions(+)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -231,6 +231,7 @@
+ - fix buffer size checks in merge_options().
+ - check amd lex buffer len before copy.
+ - add return check in ldap check_map_indirect().
++- check host macro is set before use.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/parse_amd.c
++++ autofs-5.0.5/modules/parse_amd.c
+@@ -238,6 +238,11 @@ static int match_my_name(unsigned int lo
+ 			return 1;
+ 	}
+ 
++	if (!v || !v->val) {
++		error(logopt, "error: ${host} not set");
++		goto out;
++	}
++
+ 	/* Check if comparison value is an alias */
+ 
+ 	memset(&hints, 0, sizeof(hints));

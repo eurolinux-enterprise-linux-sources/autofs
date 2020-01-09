@@ -1,0 +1,41 @@
+autofs-5.0.8 - fix negative status being reset on map read
+
+From: Ian Kent <raven@themaw.net>
+
+The map entry status field, which holds the negative cache timeout,
+gets reset on a map re-read.
+
+If the negative map entry was added at the same time as the map
+read and it was for an entry that was never in the map, the
+status gets reset even though the entry is still a valid
+negative entry.
+
+Consequently lookups for non-existent map entries are never
+seen as negative and the lookup always continues.
+---
+ CHANGELOG       |    1 +
+ daemon/lookup.c |    3 ++-
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -144,6 +144,7 @@
+ - fix crash due to thread unsafe use of libldap.
+ - fix options compare.
+ - fix fix options compare.
++- fix negative status being reset on map read.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/daemon/lookup.c
++++ autofs-5.0.5/daemon/lookup.c
+@@ -1032,7 +1032,8 @@ void lookup_prune_one_cache(struct autof
+ 			 * Reset time of last fail for valid map entries to
+ 			 * force entry update and subsequent mount retry.
+ 			 */
+-			me->status = 0;
++			if (me->mapent)
++				me->status = 0;
+ 			me = cache_enumerate(mc, me);
+ 			continue;
+ 		}

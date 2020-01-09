@@ -1,0 +1,50 @@
+autofs-5.0.6 - fix segfault in get_query_dn()
+
+From: Leonardo Chiquitto <leonardo.lists@gmail.com>
+
+Automount will segfault when two threads run get_query_dn()
+simultaneously and $SEARCH_BASE is defined in sysconfig.
+This happens because a thread tries to dereference ctxt->sdns
+while another thread running the same function frees the
+memory.
+
+I believe we don't need to reread $SEARCH_BASE every time
+get_query_dn() is called.
+
+edit: Ian Kent <raven@themaw.net>
+move the read of configured search dns to lookup_init().
+edit end
+---
+
+ modules/lookup_ldap.c |   12 +++---------
+ 1 file changed, 3 insertions(+), 9 deletions(-)
+
+
+--- autofs-5.0.5.orig/modules/lookup_ldap.c
++++ autofs-5.0.5/modules/lookup_ldap.c
+@@ -330,15 +330,6 @@ static int get_query_dn(unsigned logopt,
+ 		scope = LDAP_SCOPE_SUBTREE;
+ 	}
+ 
+-	if (!ctxt->base) {
+-		sdns = defaults_get_searchdns();
+-		if (sdns) {
+-			if (ctxt->sdns)
+-				defaults_free_searchdns(ctxt->sdns);
+-			ctxt->sdns = sdns;
+-		}
+-	}
+-
+ 	dn = NULL;
+ 	if (!ctxt->sdns) {
+ 		rv = ldap_search_s(ldap, ctxt->base,
+@@ -1465,6 +1456,9 @@ int lookup_init(const char *mapfmt, int
+ 		return 1;
+ 	}
+ 
++	if (!ctxt->base)
++		ctxt->sdns = defaults_get_searchdns();
++
+ 	ctxt->timeout = defaults_get_ldap_timeout();
+ 	ctxt->network_timeout = defaults_get_ldap_network_timeout();
+ 

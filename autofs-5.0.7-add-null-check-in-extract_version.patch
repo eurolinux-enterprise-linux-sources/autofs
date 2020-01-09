@@ -1,0 +1,23 @@
+autofs-5.0.7 - add null check in extract_version()
+
+From: Ian Kent <raven@themaw.net>
+
+A space should always be found in the passed in string but a check
+should be done in case it isn't.
+---
+ lib/mounts.c |    2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/lib/mounts.c b/lib/mounts.c
+index 0caa0aa..7b959b8 100644
+--- a/lib/mounts.c
++++ b/lib/mounts.c
+@@ -168,6 +168,8 @@ unsigned int get_kver_minor(void)
+ static int extract_version(char *start, struct nfs_mount_vers *vers)
+ {
+ 	char *s_ver = strchr(start, ' ');
++	if (!s_ver)
++		return 0;
+ 	while (*s_ver && !isdigit(*s_ver)) {
+ 		s_ver++;
+ 		if (!*s_ver)

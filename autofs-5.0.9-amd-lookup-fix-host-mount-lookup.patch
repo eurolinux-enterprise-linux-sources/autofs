@@ -1,0 +1,173 @@
+autofs-5.0.9 - amd lookup fix host mount lookup
+
+From: Ian Kent <raven@themaw.net>
+
+The amd host mount type is implemented by using the autofs internal
+hosts map module and the autofs sun parser.
+
+When using the amd mount type host we need to avoid calling back
+into the lookup module of the amd map (as an amd format lookup)
+since the lookup keys for mounts in the tree might not match
+correctly.  In any case it's a call into a lookup module that
+isn't needed.
+---
+ daemon/lookup.c     |   65 ++++++++++++++++++++++++++++++++++++++++++++++++++++
+ modules/parse_amd.c |   34 +++++++++++++++++++++++----
+ 2 files changed, 94 insertions(+), 5 deletions(-)
+
+--- autofs-5.0.5.orig/daemon/lookup.c
++++ autofs-5.0.5/daemon/lookup.c
+@@ -793,6 +793,62 @@ int do_lookup_mount(struct autofs_point
+ 	return status;
+ }
+ 
++static int lookup_amd_instance(struct autofs_point *ap,
++			       struct map_source *map,
++			       const char *name, int name_len)
++{
++	struct map_source *instance;
++	struct amd_entry *entry;
++	const char *argv[2];
++	const char **pargv = NULL;
++	int argc = 0;
++	struct mapent *me;
++	char *m_key;
++
++	me = cache_lookup_distinct(map->mc, name);
++	if (!me || !me->multi) {
++		error(ap->logopt, "expected multi mount entry not found");
++		return NSS_STATUS_UNKNOWN;
++	}
++
++	m_key = malloc(strlen(ap->path) + strlen(me->multi->key) + 1);
++	if (!m_key) {
++		error(ap->logopt, "failed to allocate storage for search key");
++		return NSS_STATUS_UNKNOWN;
++	}
++
++	strcpy(m_key, ap->path);
++	strcat(m_key, "/");
++	strcat(m_key, me->multi->key);
++	entry = master_find_amdmount(ap, m_key);
++	if (!entry) {
++		error(ap->logopt, "expected amd mount entry not found");
++		free(m_key);
++		return NSS_STATUS_UNKNOWN;
++	}
++	free(m_key);
++
++	if (strcmp(entry->type, "host")) {
++		error(ap->logopt, "unexpected map type %s", entry->type);
++		return NSS_STATUS_UNKNOWN;
++	}
++
++	if (entry->opts) {
++		argv[0] = entry->opts;
++		argv[1] = NULL;
++		pargv = argv;
++		argc = 1;
++	}
++
++	instance = master_find_source_instance(map, "hosts", "sun", argc, pargv);
++	if (!instance) {
++		error(ap->logopt, "expected hosts map instance not found");
++		return NSS_STATUS_UNKNOWN;
++	}
++
++	return do_lookup_mount(ap, instance, name, name_len);
++}
++
+ static int lookup_name_file_source_instance(struct autofs_point *ap, struct map_source *map, const char *name, int name_len)
+ {
+ 	struct map_source *instance;
+@@ -802,6 +858,9 @@ static int lookup_name_file_source_insta
+ 	struct stat st;
+ 	char *type, *format;
+ 
++	if (*name == '/' && map->flags & MAP_FLAG_FORMAT_AMD)
++		return lookup_amd_instance(ap, map, name, name_len);
++
+ 	if (stat(map->argv[0], &st) == -1) {
+ 		warn(ap->logopt, "file map not found");
+ 		return NSS_STATUS_NOTFOUND;
+@@ -837,6 +896,9 @@ static int lookup_name_source_instance(s
+ 	const char *format;
+ 	time_t age = time(NULL);
+ 
++	if (*name == '/' && map->flags & MAP_FLAG_FORMAT_AMD)
++		return lookup_amd_instance(ap, map, name, name_len);
++
+ 	format = map->format;
+ 
+ 	instance = master_find_source_instance(map, type, format, 0, NULL);
+@@ -865,6 +927,9 @@ static int do_name_lookup_mount(struct a
+ 		return NSS_STATUS_UNKNOWN;
+ 	}
+ 
++	if (*name == '/' && map->flags & MAP_FLAG_FORMAT_AMD)
++		return lookup_amd_instance(ap, map, name, name_len);
++
+ 	/*
+ 	 * This is only called when map->type != NULL.
+ 	 * We only need to look for a map if source type is
+--- autofs-5.0.5.orig/modules/parse_amd.c
++++ autofs-5.0.5/modules/parse_amd.c
+@@ -1073,29 +1073,53 @@ static int do_host_mount(struct autofs_p
+ 			 unsigned int flags)
+ {
+ 	struct lookup_mod *lookup;
++	struct map_source *instance;
+ 	struct mapent *me;
+ 	const char *argv[2];
++	const char **pargv = NULL;
++	int argc = 0;
+ 	int ret = 1;
+ 
+-	argv[0] = entry->opts;
+-	argv[1] = NULL;
++	if (entry->opts) {
++		argv[0] = entry->opts;
++		argv[1] = NULL;
++		pargv = argv;
++		argc = 1;
++	}
+ 
+-	lookup = open_lookup("hosts", MODPREFIX, NULL, 1, argv);
++	instance_mutex_lock();
++	lookup = open_lookup("hosts", MODPREFIX, NULL, argc, pargv);
+ 	if (!lookup) {
+ 		debug(ap->logopt, "open lookup module hosts failed");
++		instance_mutex_unlock();
+ 		goto out;
+ 	}
+ 
++	instance = master_find_source_instance(source, "hosts", "sun", argc, pargv);
++	if (!instance) {
++		instance = master_add_source_instance(source,
++				 "hosts", "sun", time(NULL), argc, pargv);
++		if (!instance) {
++			error(ap->logopt, MODPREFIX
++			     "failed to create source instance for hosts map");
++			instance_mutex_unlock();
++			close_lookup(lookup);
++			goto out;
++		}
++	}
++	instance->lookup = lookup;
++	instance_mutex_unlock();
++
++	cache_writelock(source->mc);
+ 	me = cache_lookup_distinct(source->mc, name);
+ 	if (me)
+ 		cache_push_mapent(me, NULL);
++	cache_unlock(source->mc);
+ 
+ 	master_source_current_wait(ap->entry);
+ 	ap->entry->current = source;
+ 
+ 	ret = lookup->lookup_mount(ap, name, strlen(name), lookup->context);
+-
+-	close_lookup(lookup);
+ out:
+ 	return ret;
+ }

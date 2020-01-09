@@ -1,0 +1,36 @@
+autofs-5.0.6 - fix typo in libtirpc file name
+
+From: Leonardo Chiquitto <leonardo.lists@gmail.com>
+
+The library file name was misspelled as libitirpc.so.
+---
+
+ CHANGELOG          |    1 +
+ daemon/automount.c |    4 ++--
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -200,6 +200,7 @@
+ - fix parse buffer initialization.
+ - remove master_mutex_unlock() leftover.
+ - don't reset errno.
++- fix typo in libtirpc file name.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/daemon/automount.c
++++ autofs-5.0.5/daemon/automount.c
+@@ -2267,9 +2267,9 @@ int main(int argc, char *argv[])
+ 		xmlInitParser();
+ #endif
+ #ifdef TIRPC_WORKAROUND
+-	void *dh_tirpc = dlopen("libitirpc.so", RTLD_NOW);
++	void *dh_tirpc = dlopen("libtirpc.so", RTLD_NOW);
+ 	if (!dh_tirpc)
+-		dh_tirpc = dlopen("libitirpc.so.1", RTLD_NOW);
++		dh_tirpc = dlopen("libtirpc.so.1", RTLD_NOW);
+ #endif
+ 
+ 	if (!master_read_master(master_list, age, 0)) {

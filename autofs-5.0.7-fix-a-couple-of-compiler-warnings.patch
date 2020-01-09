@@ -1,0 +1,24 @@
+autofs-5.0.7 - fix a couple of compiler warnings
+
+From: Ian Kent <ikent@redhat.com>
+
+Quiet a couple of ompiler warnings by making intention explicit using brackets.
+---
+ CHANGELOG            |    1 +
+ modules/mount_bind.c |    2 +-
+ modules/mount_nfs.c  |    4 ++--
+ 3 files changed, 4 insertions(+), 3 deletions(-)
+
+--- autofs-5.0.5.orig/modules/mount_nfs.c
++++ autofs-5.0.5/modules/mount_nfs.c
+@@ -206,8 +206,8 @@ int mount_mount(struct autofs_point *ap,
+ 	 */
+ 	if ((hosts && !hosts->next) &&
+ 	    mount_default_proto == 4 &&
+-	    vers & NFS_VERS_MASK != 0 &&
+-	    vers & NFS4_VERS_MASK != 0) {
++	    (vers & NFS_VERS_MASK) != 0 &&
++	    (vers & NFS4_VERS_MASK) != 0) {
+ 		unsigned int v4_probe_ok = 0;
+ 		struct host *tmp = new_host(hosts->name,
+ 					    hosts->addr, hosts->addr_len,

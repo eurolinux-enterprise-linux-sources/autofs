@@ -1,0 +1,55 @@
+autofs-5.0.6 - dont use pthread_rwlock_tryrdlock()
+
+From: Ian Kent <ikent@redhat.com>
+
+Occasionally we might not be able to get the master source read lock
+when a write lock is held. Currently we wait a little while to see if
+it gets released and try again. But using the pthreads function
+pthread_rwlock_tryrdlock() introduces scheduling inconsistencies and
+makes the wakeup order somewhat random causing some threads to sometimes
+wait much longer than others. Unsing the pthread_rwlock_rdlock() resolves
+the inconsistencies.
+---
+
+ CHANGELOG    |    1 +
+ lib/master.c |   10 ++++++++--
+ 2 files changed, 9 insertions(+), 2 deletions(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -123,6 +123,7 @@
+ - use numeric protocol ids instead of protoent structs.
+ - fix recursive mount deadlock.
+ - increase file map read buffer size.
++- dont use pthread_rwlock_tryrdlock().
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/master.c
++++ autofs-5.0.5/lib/master.c
+@@ -551,16 +551,22 @@ void master_source_writelock(struct mast
+ 
+ void master_source_readlock(struct master_mapent *entry)
+ {
+-	int retries = 25; /* 5 second maximum */
++	int retries = 25;
+ 	int status;
+ 
+ 	while (retries--) {
+-		status = pthread_rwlock_tryrdlock(&entry->source_lock);
++		status = pthread_rwlock_rdlock(&entry->source_lock);
+ 		if (status != EAGAIN && status != EBUSY)
+ 			break;
+ 		else {
+                 	struct timespec t = { 0, 200000000 };
+ 	                struct timespec r;
++
++			if (status == EAGAIN)
++				logmsg("master_mapent source too many readers");
++			else
++				logmsg("master_mapent source write lock held");
++
+                 	while (nanosleep(&t, &r) == -1 && errno == EINTR)
+                         	memcpy(&t, &r, sizeof(struct timespec));
+ 		}

@@ -1,0 +1,44 @@
+autofs-5.0.9 - fix amd entry not found at expire
+
+From: Ian Kent <raven@themaw.net>
+
+Due to the way amd matches keys in its map it's possible that
+distinct key entries aren't present in the map.
+
+The indirect mount expire procedure needs to lookup cache entries
+for offset mounts in order to get the control file handle needed
+to send an expire check to them.
+
+So we need to make sure that when a distinct match isn't found
+an expire check is still done. That's OK because the mounts in
+the expire list are under the autofs directory so they should
+be checked and the ap control file handle can be used for it.
+---
+ daemon/indirect.c |   12 +++++-------
+ 1 file changed, 5 insertions(+), 7 deletions(-)
+
+diff --git a/daemon/indirect.c b/daemon/indirect.c
+index 6dfbd25..a04a624 100644
+--- a/daemon/indirect.c
++++ b/daemon/indirect.c
+@@ -513,15 +513,13 @@ void *expire_proc_indirect(void *arg)
+ 		if (!me && ind_key)
+ 			me = lookup_source_mapent(ap, ind_key, LKP_NORMAL);
+ 		pthread_cleanup_pop(1);
+-		if (!me)
+-			continue;
+ 
+-		if (*me->key == '/') {
+-			ioctlfd = me->ioctlfd;
+-		} else {
+-			ioctlfd = ap->ioctlfd;
++		ioctlfd = ap->ioctlfd;
++		if (me) {
++			if (*me->key == '/')
++				ioctlfd = me->ioctlfd;
++			cache_unlock(me->mc);
+ 		}
+-		cache_unlock(me->mc);
+ 
+ 		debug(ap->logopt, "expire %s", next->path);
+ 

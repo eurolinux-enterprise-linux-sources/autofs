@@ -1,0 +1,35 @@
+autofs-5.0.6 - fix get_nfs_info() can incorrectly fail
+
+From: Ian Kent <ikent@redhat.com>
+
+In function get_nfs_info(), if both TCP and UDP protocols are being
+checked, the TCP check passes but the UDP check fails, the function
+will incorrectly return a fail to the caller.
+---
+
+ CHANGELOG            |    1 +
+ modules/replicated.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -103,6 +103,7 @@
+ - fix initialization in rpc create_client().
+ - fix libtirpc name clash.
+ - fix nfs4 contacts portmap.
++- fix get_nfs_info() can incorrectly fail.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/replicated.c
++++ autofs-5.0.5/modules/replicated.c
+@@ -769,7 +769,7 @@ static int get_vers_and_cost(unsigned lo
+ 		supported = get_nfs_info(logopt, host,
+ 				   &pm_info, &rpc_info, "udp", vers, options);
+ 		if (IS_ERR(supported)) {
+-			if (ERR(supported) == ETIMEDOUT)
++			if (!ret && ERR(supported) == ETIMEDOUT)
+ 				return ret;
+ 		} else if (supported) {
+ 			ret = 1;

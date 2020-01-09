@@ -1,0 +1,50 @@
+autofs-5.0.7 - fix use get_proximity() without libtirpc
+
+From: Ian Kent <raven@themaw.net>
+
+If autofs is not using libtirpc and there are any configured IPv6
+interfaces then get_proximity() will fail with PROXIMITY_UNSUPPORTED.
+
+In this case when checking interfaces the IPv6 interfaces need to be
+ignored.
+---
+
+ CHANGELOG            |    1 +
+ modules/replicated.c |    8 ++------
+ 2 files changed, 3 insertions(+), 6 deletions(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -182,6 +182,7 @@
+ - fix file descriptor leak when reloading the daemon.
+ - change walk_tree() to take ap.
+ - add negative cache lookup to hesiod lookup.
++- fix use get_proximity() without libtirpc.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/replicated.c
++++ autofs-5.0.5/modules/replicated.c
+@@ -185,9 +185,7 @@ static unsigned int get_proximity(struct
+ 			break;
+ 
+ 		case AF_INET6:
+-#ifndef WITH_LIBTIRPC
+-			return PROXIMITY_UNSUPPORTED;
+-#else
++#ifdef WITH_LIBTIRPC
+ 			if (host_addr->sa_family == AF_INET)
+ 				break;
+ 			if6_addr = (struct sockaddr_in6 *) this->ifa_addr;
+@@ -253,9 +251,7 @@ static unsigned int get_proximity(struct
+ 			break;
+ 
+ 		case AF_INET6:
+-#ifndef WITH_LIBTIRPC
+-			return PROXIMITY_UNSUPPORTED;
+-#else
++#ifdef WITH_LIBTIRPC
+ 			if (host_addr->sa_family == AF_INET)
+ 				break;
+ 			if6_addr = (struct sockaddr_in6 *) this->ifa_addr;

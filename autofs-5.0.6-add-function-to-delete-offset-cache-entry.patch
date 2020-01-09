@@ -1,0 +1,80 @@
+autofs-5.0.6 - add function to delete offset cache entry
+
+From: Ian Kent <ikent@redhat.com>
+
+Currently only the entire expanded list of offset cache entries may be
+removed from the cache. In order to be able to update already expanded
+multi map offset entries we need to be able to delete them.
+---
+
+ include/automount.h |    1 +
+ lib/cache.c         |   47 +++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 48 insertions(+)
+
+
+--- autofs-5.0.5.orig/include/automount.h
++++ autofs-5.0.5/include/automount.h
+@@ -191,6 +191,7 @@ int cache_add_offset(struct mapent_cache
+ int cache_set_parents(struct mapent *mm);
+ int cache_update(struct mapent_cache *mc, struct map_source *ms, const char *key, const char *mapent, time_t age);
+ int cache_delete(struct mapent_cache *mc, const char *key);
++int cache_delete_offset(struct mapent_cache *mc, const char *key);
+ void cache_multi_readlock(struct mapent *me);
+ void cache_multi_writelock(struct mapent *me);
+ void cache_multi_unlock(struct mapent *me);
+--- autofs-5.0.5.orig/lib/cache.c
++++ autofs-5.0.5/lib/cache.c
+@@ -771,6 +771,53 @@ int cache_update(struct mapent_cache *mc
+ 	return ret;
+ }
+ 
++/* cache_multi_lock of the multi mount owner must be held by caller */
++int cache_delete_offset(struct mapent_cache *mc, const char *key)
++{
++	u_int32_t hashval = hash(key, mc->size);
++	struct mapent *me = NULL, *pred;
++	int status;
++
++	me = mc->hash[hashval];
++	if (!me)
++		return CHE_FAIL;
++
++	if (strcmp(key, me->key) == 0) {
++		if (me->multi && me->multi == me)
++			return CHE_FAIL;
++		mc->hash[hashval] = me->next;
++		goto delete;
++	}
++
++	while (me->next != NULL) {
++		pred = me;
++		me = me->next;
++		if (strcmp(key, me->key) == 0) {
++			if (me->multi && me->multi == me)
++				return CHE_FAIL;
++			pred->next = me->next;
++			goto delete;
++		}
++	}
++
++	return CHE_FAIL;
++
++delete:
++	status = pthread_rwlock_destroy(&me->multi_rwlock);
++	if (status)
++		fatal(status);
++	list_del(&me->multi_list);
++	ino_index_lock(mc);
++	list_del(&me->ino_index);
++	ino_index_unlock(mc);
++	free(me->key);
++	if (me->mapent)
++		free(me->mapent);
++	free(me);
++
++	return CHE_OK;
++}
++
+ /* cache must be write locked by caller */
+ int cache_delete(struct mapent_cache *mc, const char *key)
+ {

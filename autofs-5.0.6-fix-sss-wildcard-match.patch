@@ -1,0 +1,41 @@
+autofs-5.0.6 - fix sss wildcard match
+
+From: Ian Kent <ikent@redhat.com>
+
+Check for a wildcard map entry on sss map read and convert to
+the usual '*' befone adding to the map entry cache.
+---
+
+ CHANGELOG            |    1 +
+ modules/lookup_sss.c |    9 +++++++++
+ 2 files changed, 10 insertions(+)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -92,6 +92,7 @@
+ - allow MOUNT_WAIT to override probe.
+ - improve UDP RPC timeout handling.
+ - use strtok_r() in linux_version_code().
++- fix sss wildcard match.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/lookup_sss.c
++++ autofs-5.0.5/modules/lookup_sss.c
+@@ -325,6 +325,15 @@ int lookup_read_map(struct autofs_point
+ 			continue;
+ 		}
+ 
++		if (*key == '/' && strlen(key) == 1) {
++			if (ap->type == LKP_DIRECT) {
++				free(key);
++				free(value);
++				continue;
++			}
++			*key = '*';
++		}
++
+ 		/*
+ 		 * TODO: implement sun % hack for key translation for
+ 		 * mixed case keys in schema that are single case only.

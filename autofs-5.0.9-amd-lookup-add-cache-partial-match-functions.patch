@@ -1,0 +1,88 @@
+autofs-5.0.9 - amd lookup add cache partial match functions
+
+From: Ian Kent <raven@themaw.net>
+
+Partial key matching is used for amd. A prefix is possibly added to the key
+and if the map entry key has a trailing /* and matches the initial part of
+the key+prefix the match succeeds.
+
+Update the existing partial match functions to help with this.
+---
+ include/automount.h |    1 +
+ lib/cache.c         |   38 +++++++++++++++++++++++++++++++++-----
+ 2 files changed, 34 insertions(+), 5 deletions(-)
+
+--- autofs-5.0.5.orig/include/automount.h
++++ autofs-5.0.5/include/automount.h
+@@ -214,6 +214,7 @@ struct mapent *cache_lookup(struct mapen
+ struct mapent *cache_lookup_distinct(struct mapent_cache *mc, const char *key);
+ struct mapent *cache_lookup_offset(const char *prefix, const char *offset, int start, struct list_head *head);
+ struct mapent *cache_partial_match(struct mapent_cache *mc, const char *prefix);
++struct mapent *cache_partial_match_wild(struct mapent_cache *mc, const char *prefix);
+ int cache_add(struct mapent_cache *mc, struct map_source *ms, const char *key, const char *mapent, time_t age);
+ int cache_update_offset(struct mapent_cache *mc, const char *mkey, const char *key, const char *mapent, time_t age);
+ void cache_update_negative(struct mapent_cache *mc, struct map_source *ms, const char *key, time_t timeout);
+--- autofs-5.0.5.orig/lib/cache.c
++++ autofs-5.0.5/lib/cache.c
+@@ -566,7 +566,9 @@ struct mapent *cache_lookup_offset(const
+ }
+ 
+ /* cache must be read locked by caller */
+-struct mapent *cache_partial_match(struct mapent_cache *mc, const char *prefix)
++static struct mapent *__cache_partial_match(struct mapent_cache *mc,
++					    const char *prefix,
++					    unsigned int type)
+ {
+ 	struct mapent *me = NULL;
+ 	size_t len = strlen(prefix);
+@@ -578,20 +580,46 @@ struct mapent *cache_partial_match(struc
+ 			continue;
+ 
+ 		if (len < strlen(me->key) &&
+-		    (strncmp(prefix, me->key, len) == 0) && me->key[len] == '/')
+-			return me;
++		    (strncmp(prefix, me->key, len) == 0) &&
++		     me->key[len] == '/') {
++			if (type == LKP_NORMAL)
++				return me;
++			if (type == LKP_WILD &&
++			    me->key[len] != '\0' &&
++			    me->key[len + 1] == '*')
++				return me;
++		}
+ 
+ 		me = me->next;
+ 		while (me != NULL) {
+ 			if (len < strlen(me->key) &&
+-			    strncmp(prefix, me->key, len) == 0 && me->key[len] == '/')
+-				return me;
++			    (strncmp(prefix, me->key, len) == 0 &&
++			    me->key[len] == '/')) {
++				if (type == LKP_NORMAL)
++					return me;
++				if (type == LKP_WILD &&
++				    me->key[len] != '\0' &&
++				    me->key[len + 1] == '*')
++					return me;
++			}
+ 			me = me->next;
+ 		}
+ 	}
+ 	return NULL;
+ }
+ 
++/* cache must be read locked by caller */
++struct mapent *cache_partial_match(struct mapent_cache *mc, const char *prefix)
++{
++	return __cache_partial_match(mc, prefix, LKP_NORMAL);
++}
++
++/* cache must be read locked by caller */
++struct mapent *cache_partial_match_wild(struct mapent_cache *mc, const char *prefix)
++{
++	return __cache_partial_match(mc, prefix, LKP_WILD);
++}
++
+ /* cache must be write locked by caller */
+ int cache_add(struct mapent_cache *mc, struct map_source *ms, const char *key, const char *mapent, time_t age)
+ {

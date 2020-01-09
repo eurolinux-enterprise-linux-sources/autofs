@@ -1,0 +1,186 @@
+autofs-5.1.0 - add config option to force use of program map stdvars
+
+From: Ian Kent <ikent@redhat.com>
+
+Enabling the extended environment (including $HOME, for example) for
+program maps opens automount(8) to a privilege escalation.
+
+Rather than just removing the entended environment a configuration
+option is added to disable it by default so that those who wish to
+use it can do so if they wish.
+---
+ CHANGELOG                      |    1 +
+ include/defaults.h             |    2 ++
+ lib/defaults.c                 |   12 ++++++++++++
+ man/autofs.5                   |    5 +++++
+ man/autofs.conf.5.in           |    9 +++++++++
+ modules/lookup_program.c       |   14 +++++++++++++-
+ redhat/autofs.conf.default.in  |   11 +++++++++++
+ samples/autofs.conf.default.in |   11 +++++++++++
+ 8 files changed, 64 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -249,6 +249,7 @@
+ - fix typo in update_hosts_mounts().
+ - fix hosts map update on reload.
+ - add a prefix to program map stdvars.
++- add config option to force use of program map stdvars.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/include/defaults.h
++++ autofs-5.0.5/include/defaults.h
+@@ -30,6 +30,7 @@
+ #define DEFAULT_UMOUNT_WAIT		"12"
+ #define DEFAULT_BROWSE_MODE		"1"
+ #define DEFAULT_LOGGING			"none"
++#define DEFAULT_FORCE_STD_PROG_MAP_ENV	"0"
+ 
+ #define DEFAULT_LDAP_TIMEOUT		"-1"
+ #define DEFAULT_LDAP_NETWORK_TIMEOUT	"8"
+@@ -151,6 +152,7 @@ unsigned int defaults_get_timeout(void);
+ unsigned int defaults_get_negative_timeout(void);
+ unsigned int defaults_get_browse_mode(void);
+ unsigned int defaults_get_logging(void);
++unsigned int defaults_force_std_prog_map_env(void);
+ const char *defaults_get_ldap_server(void);
+ unsigned int defaults_get_ldap_timeout(void);
+ unsigned int defaults_get_ldap_network_timeout(void);
+--- autofs-5.0.5.orig/lib/defaults.c
++++ autofs-5.0.5/lib/defaults.c
+@@ -50,6 +50,7 @@
+ #define NAME_NEGATIVE_TIMEOUT		"negative_timeout"
+ #define NAME_BROWSE_MODE		"browse_mode"
+ #define NAME_LOGGING			"logging"
++#define NAME_FORCE_STD_PROG_MAP_ENV	"force_standard_program_map_env"
+ 
+ #define NAME_LDAP_URI			"ldap_uri"
+ #define NAME_LDAP_TIMEOUT		"ldap_timeout"
+@@ -1589,6 +1590,17 @@ unsigned int defaults_get_logging(void)
+ 	return logging;
+ }
+ 
++unsigned int defaults_force_std_prog_map_env(void)
++{
++	int res;
++
++	res = conf_get_yesno(autofs_gbl_sec, NAME_FORCE_STD_PROG_MAP_ENV);
++	if (res < 0)
++		res = atoi(DEFAULT_FORCE_STD_PROG_MAP_ENV);
++
++	return res;
++}
++
+ unsigned int defaults_get_ldap_timeout(void)
+ {
+ 	int res;
+--- autofs-5.0.5.orig/man/autofs.5
++++ autofs-5.0.5/man/autofs.5
+@@ -190,6 +190,11 @@ SHOST	Short hostname (domain part remove
+ .fi
+ .RE
+ .sp
++If a program map is used these standard environment variables will have
++a prefix of "AUTOFS_" to prevent interpreted languages like python from
++being able to load and execute arbitray code from a user home directory.
++.RE
++.sp
+ Additional entries can be defined with the -Dvariable=Value map-option to
+ .BR automount (8).
+ .SS Executable Maps
+--- autofs-5.0.5.orig/man/autofs.conf.5.in
++++ autofs-5.0.5/man/autofs.conf.5.in
+@@ -71,6 +71,15 @@ options replace the global options (prog
+ .B logging
+ .br
+ set default log level "none", "verbose" or "debug" (program default "none").
++.TP
++.B force_standard_program_map_env
++.br
++override the use of a prefix with standard environment variables when a
++program map is executed. Since program maps are run as the privileded
++user setting these standard environment variables opens automount(8) to
++potential user privilege escalation when the program map is written in a
++language that can load components from, for example, a user home directory
++(program default "no").
+ .SS LDAP Configuration
+ .P
+ Configuration settings available are:
+--- autofs-5.0.5.orig/modules/lookup_program.c
++++ autofs-5.0.5/modules/lookup_program.c
+@@ -129,6 +129,7 @@ static char *lookup_one(struct autofs_po
+ 	int distance;
+ 	int alloci = 1;
+ 	int status;
++	char *prefix;
+ 
+ 	mapent = (char *) malloc(MAPENT_MAX_LEN + 1);
+ 	if (!mapent) {
+@@ -174,6 +175,17 @@ static char *lookup_one(struct autofs_po
+ 			warn(ap->logopt,
+ 			     MODPREFIX "failed to set PWD to %s for map %s",
+ 			     ap->path, ctxt->mapname);
++
++		/*
++		 * By default use a prefix with standard environment
++		 * variables to prevent system subversion by interpreted
++		 * languages.
++		 */
++		if (defaults_force_std_prog_map_env())
++			prefix = NULL;
++		else
++			prefix = "AUTOFS_";
++
+ 		/*
+ 		 * MAPFMT_DEFAULT must be "sun" for ->parse_init() to have setup
+ 		 * the macro table.
+@@ -181,7 +193,7 @@ static char *lookup_one(struct autofs_po
+ 		if (ctxt->mapfmt && strcmp(ctxt->mapfmt, "MAPFMT_DEFAULT")) {
+ 			struct parse_context *pctxt = (struct parse_context *) ctxt->parse->context;
+ 			/* Add standard environment as seen by sun map parser */
+-			pctxt->subst = addstdenv(pctxt->subst, "AUTOFS_");
++			pctxt->subst = addstdenv(pctxt->subst, prefix);
+ 			macro_setenv(pctxt->subst);
+ 		}
+ 		execl(ctxt->mapname, ctxt->mapname, name, NULL);
+--- autofs-5.0.5.orig/redhat/autofs.conf.default.in
++++ autofs-5.0.5/redhat/autofs.conf.default.in
+@@ -53,6 +53,17 @@ mount_nfs_default_protocol = 4
+ #
+ #logging = none
+ #
++# force_standard_program_map_env - disable the use of the "AUTOFS_"
++#			prefix for standard environemt variables when
++#			executing a program map. Since program maps
++#			are run as the privileded user this opens
++#			automount(8) to potential user privilege
++#			escalation when the program map is written
++#			in a language that  can load components from,
++#			for example, a user home directory.
++#
++# force_standard_program_map_env = no
++#
+ # Define base dn for map dn lookup.
+ #
+ # Define server URIs
+--- autofs-5.0.5.orig/samples/autofs.conf.default.in
++++ autofs-5.0.5/samples/autofs.conf.default.in
+@@ -52,6 +52,17 @@ browse_mode = no
+ #
+ #logging = none
+ #
++# force_standard_program_map_env - disable the use of the "AUTOFS_"
++#			prefix for standard environemt variables when
++#			executing a program map. Since program maps
++#			are run as the privileded user this opens
++#			automount(8) to potential user privilege
++#			escalation when the program map is written
++#			in a language that  can load components from,
++#			for example, a user home directory.
++#
++# force_standard_program_map_env = no
++#
+ # Define base dn for map dn lookup.
+ #
+ # Define server URIs

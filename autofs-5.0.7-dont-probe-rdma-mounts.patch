@@ -1,0 +1,64 @@
+autofs-5.0.7 - dont probe rdma mounts
+
+From: Ian Kent <raven@themaw.net>
+
+Since the change to pass text nfs mount options drectly to the kernel all autofs
+mount requests now probe server availability. This was because of long delays
+mounting from servers that aren't responding.
+
+This caused mounts requesting the rdma protocol to fail if udp or tcp was also
+not available from the server.
+
+Since, AFAICT the rmda protocol can't be used with RPC fromn userspace, the only
+way to work around it is to not probe servers when rdma is requested.
+---
+ CHANGELOG           |    1 +
+ modules/mount_nfs.c |   13 ++++++++++++-
+ 2 files changed, 13 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/modules/mount_nfs.c
++++ autofs-5.0.5/modules/mount_nfs.c
+@@ -71,6 +71,7 @@ int mount_mount(struct autofs_point *ap,
+ 	int nosymlink = 0;
+ 	int port = -1;
+ 	int ro = 0;            /* Set if mount bind should be read-only */
++	int rdma = 0;
+ 
+ 	if (ap->flags & MOUNT_FLAG_REMOUNT)
+ 		return 0;
+@@ -124,6 +125,11 @@ int mount_mount(struct autofs_point *ap,
+ 				end--;
+ 
+ 			o_len = end - cp + 1;
++
++			if (strncmp("proto=rdma", cp, o_len) == 0 ||
++				   strncmp("rdma", cp, o_len) == 0)
++				rdma = 1;
++
+ 			if (strncmp("nosymlink", cp, o_len) == 0) {
+ 				nosymlink = 1;
+ 			} else if (strncmp("nobind", cp, o_len) == 0) {
+@@ -176,7 +182,12 @@ int mount_mount(struct autofs_point *ap,
+ 		info(ap->logopt, MODPREFIX "no hosts available");
+ 		return 1;
+ 	}
+-	prune_host_list(ap->logopt, &hosts, vers, port);
++	/*
++	 * We can't probe protocol rdma so leave it to mount.nfs(8)
++	 * and and suffer the delay if a server isn't available.
++	 */
++	if (!rdma)
++		prune_host_list(ap->logopt, &hosts, vers, port);
+ 
+ 	if (!hosts) {
+ 		info(ap->logopt, MODPREFIX "no hosts available");
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -126,6 +126,7 @@
+ - dont use pthread_rwlock_tryrdlock().
+ - fix master map mount options matching.
+ - fix master map bogus keywork match.
++- dont probe rdma mounts.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------

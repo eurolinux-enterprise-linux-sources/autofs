@@ -1,0 +1,33 @@
+autofs-5.0.7 - fix fix map entry duplicate offset detection
+
+From: Ian Kent <raven@themaw.net>
+
+Map entry duplicate detection was still broken.
+This hopefully will fix it, at least the Conectathon duplicate offset entry
+tests pass now.
+---
+ CHANGELOG   |    1 +
+ lib/cache.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -251,6 +251,7 @@
+ - add a prefix to program map stdvars.
+ - add config option to force use of program map stdvars.
+ - fix incorrect check in parse_mount().
++- fix fix map entry duplicate offset detection.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/cache.c
++++ autofs-5.0.5/lib/cache.c
+@@ -733,7 +733,7 @@ int cache_update_offset(struct mapent_ca
+ 
+ 	me = cache_lookup_distinct(mc, key);
+ 	if (me && me->age == age) {
+-		if (me->multi == owner)
++		if (me == owner || strcmp(me->key, key) == 0)
+ 			return CHE_DUPLICATE;
+ 	}
+ 

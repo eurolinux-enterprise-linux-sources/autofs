@@ -1,0 +1,83 @@
+autofs-5.0.6 - documentation fix some typos and misleading comments
+
+From: Jamie Heilman <jamie@audible.transient.net>
+
+MOUNT_NFS_DEFAULT_PROTOCOL *is* used by more than just replicated
+server maps on modern systems.
+---
+
+ man/auto.master.5.in           |    3 +--
+ modules/replicated.c           |    1 -
+ redhat/autofs.sysconfig.in     |    7 ++-----
+ samples/autofs.conf.default.in |    7 ++-----
+ 4 files changed, 5 insertions(+), 13 deletions(-)
+
+
+--- autofs-5.0.5.orig/man/auto.master.5.in
++++ autofs-5.0.5/man/auto.master.5.in
+@@ -204,8 +204,7 @@ Maps are browsable by default (program d
+ .B MOUNT_NFS_DEFAULT_PROTOCOL
+ Specify the default protocol used by mount.nfs(8) (program default 3). Since
+ we can't identify this default automatically we need to set it in the autofs
+-configuration. This option will only make a difference for replicated map
+-entries as availability probing isn't used for single host map entries.
++configuration.
+ .TP
+ .B APPEND_OPTIONS
+ Determine whether global options, given on the command line or per mount
+--- autofs-5.0.5.orig/modules/replicated.c
++++ autofs-5.0.5/modules/replicated.c
+@@ -481,7 +481,6 @@ static unsigned int get_nfs_info(unsigne
+ 
+ 	parms.pm_prog = NFS_PROGRAM;
+ 
+-	/* Try to prode UDP first to conserve socket space */
+ 	rpc_info->proto = getprotobyname(proto);
+ 	if (!rpc_info->proto)
+ 		return 0;
+--- autofs-5.0.5.orig/redhat/autofs.sysconfig.in
++++ autofs-5.0.5/redhat/autofs.sysconfig.in
+@@ -14,7 +14,7 @@ TIMEOUT=300
+ #
+ #NEGATIVE_TIMEOUT=60
+ #
+-# MOUNT_WAIT - time to wait for a response from umount(8).
++# MOUNT_WAIT - time to wait for a response from mount(8).
+ # 	       Setting this timeout can cause problems when
+ # 	       mount would otherwise wait for a server that
+ # 	       is temporarily unavailable, such as when it's
+@@ -34,10 +34,7 @@ BROWSE_MODE="no"
+ # MOUNT_NFS_DEFAULT_PROTOCOL - specify the default protocol used by
+ # 			       mount.nfs(8). Since we can't identify
+ # 			       the default automatically we need to
+-# 			       set it in our configuration. This will
+-# 			       only make a difference for replicated
+-# 			       map entries as availability probing isn't
+-# 			       used for single host map entries.
++# 			       set it in our configuration.
+ #
+ #MOUNT_NFS_DEFAULT_PROTOCOL=3
+ MOUNT_NFS_DEFAULT_PROTOCOL=4
+--- autofs-5.0.5.orig/samples/autofs.conf.default.in
++++ autofs-5.0.5/samples/autofs.conf.default.in
+@@ -14,7 +14,7 @@ TIMEOUT=300
+ #
+ #NEGATIVE_TIMEOUT=60
+ #
+-# MOUNT_WAIT - time to wait for a response from umount(8).
++# MOUNT_WAIT - time to wait for a response from mount(8).
+ # 	       Setting this timeout can cause problems when
+ # 	       mount would otherwise wait for a server that
+ # 	       is temporarily unavailable, such as when it's
+@@ -34,10 +34,7 @@ BROWSE_MODE="no"
+ # MOUNT_NFS_DEFAULT_PROTOCOL - specify the default protocol used by
+ # 			       mount.nfs(8). Since we can't identify
+ # 			       the default automatically we need to
+-# 			       set it in our configuration. This will
+-# 			       only make a difference for replicated
+-# 			       map entries as availability probing isn't
+-# 			       used for single host map entries.
++# 			       set it in our configuration.
+ #
+ #MOUNT_NFS_DEFAULT_PROTOCOL=3
+ #

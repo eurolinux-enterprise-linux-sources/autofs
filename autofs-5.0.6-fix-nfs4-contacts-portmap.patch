@@ -1,0 +1,52 @@
+autofs-5.0.6 - fix nfs4 contacts portmap
+
+From: Ian Kent <ikent@redhat.com>
+
+When an fstype of nfs4 is specified probing the server for availability
+should not need to contact the portmapper, it should use either the port
+specified by the port= option or use port 2049.
+
+However, in function modules/replicated.c:get_nfs_info() a check for the
+port= option, and subsequent portmap lookup when not it's not present, is
+done before the check for whether nfsv3 is to be checked at all.
+
+Oops!
+---
+
+ CHANGELOG            |    1 +
+ modules/replicated.c |    6 +++---
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -102,6 +102,7 @@
+ - fix mountd vers retry.
+ - fix initialization in rpc create_client().
+ - fix libtirpc name clash.
++- fix nfs4 contacts portmap.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/replicated.c
++++ autofs-5.0.5/modules/replicated.c
+@@ -589,6 +589,9 @@ static unsigned int get_nfs_info(unsigne
+ 	}
+ 
+ v3_ver:
++	if (!(version & NFS3_REQUESTED))
++		goto v2_ver;
++
+ 	if (!have_port_opt) {
+ 		status = rpc_portmap_getclient(pm_info,
+ 				host->name, host->addr, host->addr_len,
+@@ -600,9 +603,6 @@ v3_ver:
+ 			goto done_ver;
+ 	}
+ 
+-	if (!(version & NFS3_REQUESTED))
+-		goto v2_ver;
+-
+ 	if (have_port_opt) {
+ 		if (!(rpc_info->port = get_port_option(options)))
+ 			goto done_ver;

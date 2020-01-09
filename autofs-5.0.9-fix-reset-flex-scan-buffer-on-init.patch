@@ -1,0 +1,38 @@
+autofs-5.0.9 - fix reset flex scan buffer on init
+
+From: Ian Kent <ikent@redhat.com>
+
+If a scan results in an error the flex scan buffer is sometimes
+not properly reset for the next scan.
+
+This can result in an incorrect success return for a subsequent
+operation, such as a map re-read, for a master map line that's
+actually incorrect. Given the success return autofs tries to add
+a master map entry that doesn't have the needed information, such
+as the mount path, and a SEGV results.
+---
+ CHANGELOG        |    1 +
+ lib/master_tok.l |    2 ++
+ 2 files changed, 3 insertions(+)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -151,6 +151,7 @@
+ - check scandir() return value.
+ - fix use cache entry after free in lookup_prune_one_cache().
+ - check for non existent negative entries in lookup_ghost().
++- fix reset flex scan buffer on init.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/master_tok.l
++++ autofs-5.0.5/lib/master_tok.l
+@@ -436,6 +436,8 @@ void master_set_scan_buffer(const char *
+ 	memset(buff, 0, sizeof(buff));
+ 	optr = buff;
+ 
++	YY_FLUSH_BUFFER;
++
+ 	line = buffer;
+ 	line_pos = &line[0];
+ 	/*

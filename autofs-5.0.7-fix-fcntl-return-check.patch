@@ -1,0 +1,23 @@
+autofs-5.0.7 - fix fcntl return check
+
+From: Ian Kent <raven@themaw.net>
+
+When checking for FD_CLOEXEC support the return of the fcntl(2) call to
+get the file descriptor flags is not checked which could result in an
+incorrect result.
+---
+ include/automount.h |    3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/include/automount.h
++++ autofs-5.0.5/include/automount.h
+@@ -542,7 +542,8 @@ static inline void check_cloexec(int fd)
+ {
+ 	if (cloexec_works == 0) {
+ 		int fl = fcntl(fd, F_GETFD);
+-		cloexec_works = (fl & FD_CLOEXEC) ? 1 : -1;
++		if (fl != -1)
++			cloexec_works = (fl & FD_CLOEXEC) ? 1 : -1;
+ 	}
+ 	if (cloexec_works > 0)
+ 		return;

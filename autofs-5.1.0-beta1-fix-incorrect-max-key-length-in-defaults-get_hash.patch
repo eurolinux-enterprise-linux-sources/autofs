@@ -1,0 +1,49 @@
+autofs-5.1.0-beta1 - fix incorrect max key length in defaults get_hash()
+
+From: Ian Kent <ikent@redhat.com>
+
+amd section names can correspond to mount point path names.
+---
+ CHANGELOG      |    1 +
+ lib/defaults.c |    6 ++++--
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -207,6 +207,7 @@
+ - fix ldap default schema config.
+ - fix ldap default master map name config.
+ - fix map format init in lookup_init().
++- fix incorrect max key length in defaults get_hash().
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/defaults.c
++++ autofs-5.0.5/lib/defaults.c
+@@ -43,7 +43,6 @@
+ #define OLD_CONFIG_FILE			AUTOFS_CONF_DIR "/autofs"
+ #define MAX_LINE_LEN			256
+ #define MAX_SECTION_NAME		MAX_LINE_LEN
+-#define MAX_CFG_NAME_LEN		31
+ 
+ #define NAME_MASTER_MAP			"master_map_name"
+ 
+@@ -665,7 +664,7 @@ error:
+ static u_int32_t get_hash(const char *key, unsigned int size)
+ {
+ 	const char *pkey = key;
+-	char lkey[MAX_CFG_NAME_LEN];
++	char lkey[PATH_MAX + 1];
+ 	char *plkey = &lkey[0];
+ 
+ 	while (*pkey)
+@@ -683,6 +682,9 @@ static struct conf_option *conf_lookup(c
+ 	if (!key || !section)
+ 		return NULL;
+ 
++	if (strlen(key) > PATH_MAX)
++		return NULL;
++
+ 	key_hash = get_hash(key, size);
+ 	for (co = config->hash[key_hash]; co != NULL; co = co->next) {
+ 		if (strcasecmp(section, co->section))

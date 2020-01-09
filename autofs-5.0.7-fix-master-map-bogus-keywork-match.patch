@@ -1,0 +1,58 @@
+autofs-5.0.7 - fix master map bogus keywork match
+
+From: Ian Kent <raven@themaw.net>
+
+If we have a map name in the master map that ends with a keyword
+of one of the map types or "multi" we mistakenly match the trailing
+white space and include that in the map name. This has to be wrong
+since we can't handle quoting in the master map and embedded white
+space must be escaped. It would be good if we handled quoted strings
+but that has proven a bit of a nightmare so far for the current
+tokenizer.
+---
+ CHANGELOG        |    1 +
+ lib/master_tok.l |   16 ++++++++++++++++
+ 2 files changed, 17 insertions(+)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -125,6 +125,7 @@
+ - increase file map read buffer size.
+ - dont use pthread_rwlock_tryrdlock().
+ - fix master map mount options matching.
++- fix master map bogus keywork match.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/master_tok.l
++++ autofs-5.0.5/lib/master_tok.l
+@@ -200,6 +200,14 @@ OPTNTOUT	(-n{OPTWS}|-n{OPTWS}={OPTWS}|--
+ 	{MULTI} {
+ 		tlen = master_leng - 1;
+ 		if (bptr != buff && isblank(master_text[tlen])) {
++			/*
++			 * We can't handle unescaped white space in map names
++			 * so just eat the white space. We always have the
++			 * "multi" at the beginning of the string so the while
++			 * will not fall off the end.
++			 */
++			while (isblank(master_text[tlen - 1]))
++				tlen--;
+ 			strncat(buff, master_text, tlen);
+ 			bptr += tlen;
+ 			yyless(tlen);
+@@ -214,6 +222,14 @@ OPTNTOUT	(-n{OPTWS}|-n{OPTWS}={OPTWS}|--
+ 	{MTYPE}/{DNATTRSTR}= {
+ 		tlen = master_leng - 1;
+ 		if (bptr != buff && isblank(master_text[tlen])) {
++			/*
++			 * We can't handle unescaped white space in map names
++			 * so just eat the white space. We always have the
++			 * maptype keyword at the beginning of the string so
++			 * the while will not fall off the end.
++			 */
++			while (isblank(master_text[tlen - 1]))
++				tlen--;
+ 			strncat(buff, master_text, tlen);
+ 			bptr += tlen;
+ 			yyless(tlen);

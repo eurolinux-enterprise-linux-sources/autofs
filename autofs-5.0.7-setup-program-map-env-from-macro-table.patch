@@ -1,0 +1,125 @@
+autofs-5.0.7 - setup program map env from macro table
+
+From: Ian Kent <raven@themaw.net>
+
+The ability to pass parameters to program maps, in some way, is needed.
+Standard autofs specifies that program maps have one argument so passing
+parameters as arguments shouldn't be done.
+
+This patch sets the existing macro table definitions (for both global and
+local table) as environment variables before calling the map. The values
+are not checked after return so, at this stage, program maps can't change
+macro definitions.
+---
+ CHANGELOG                |    1 +
+ include/macros.h         |    1 +
+ lib/macros.c             |   28 ++++++++++++++++++++++++++++
+ modules/lookup_program.c |   20 ++++++++++++++++++++
+ 4 files changed, 50 insertions(+)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -158,6 +158,7 @@
+ - fix max() declaration.
+ - depricate nosymlink pseudo option.
+ - add symlink pseudo option.
++- setup program map env from macro table.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/include/macros.h
++++ autofs-5.0.5/include/macros.h
+@@ -40,5 +40,6 @@ void macro_free_global_table(void);
+ void macro_free_table(struct substvar *table);
+ const struct substvar *
+ macro_findvar(const struct substvar *table, const char *str, int len);
++void macro_setenv(struct substvar *table);
+ 
+ #endif
+--- autofs-5.0.5.orig/lib/macros.c
++++ autofs-5.0.5/lib/macros.c
+@@ -421,3 +421,31 @@ macro_findvar(const struct substvar *tab
+ 	return NULL;
+ }
+ 
++/* Set environment from macro variable table */
++void macro_setenv(struct substvar *table)
++{
++	const struct substvar *sv = system_table;
++	const struct substvar *lv = table;
++
++	/*
++	 * First set environment from global table, matching local
++	 * variables will overwrite these.
++	 */
++	while (sv) {
++		if (sv->def)
++			setenv(sv->def, sv->val, 1);
++		sv = sv->next;
++	}
++
++	error(LOGOPT_ANY, "table %p", table);
++	dump_table(table);
++
++	/* Next set environment from the local table */
++	while (lv) {
++		if (lv->def)
++			setenv(lv->def, lv->val, 1);
++		lv = lv->next;
++	}
++
++	return;
++}
+--- autofs-5.0.5.orig/modules/lookup_program.c
++++ autofs-5.0.5/modules/lookup_program.c
+@@ -36,9 +36,17 @@
+ 
+ struct lookup_context {
+ 	const char *mapname;
++	char *mapfmt;
+ 	struct parse_mod *parse;
+ };
+ 
++struct parse_context {
++	char *optstr;		/* Mount options */
++	char *macros;		/* Map wide macro defines */
++	struct substvar *subst;	/* $-substitutions */
++	int slashify_colons;	/* Change colons to slashes? */
++};
++
+ int lookup_version = AUTOFS_LOOKUP_VERSION;	/* Required by protocol */
+ 
+ int lookup_init(const char *mapfmt, int argc, const char *const *argv, void **context)
+@@ -79,6 +87,8 @@ int lookup_init(const char *mapfmt, int
+ 	if (!mapfmt)
+ 		mapfmt = MAPFMT_DEFAULT;
+ 
++	ctxt->mapfmt = strdup(mapfmt);
++
+ 	ctxt->parse = open_parse(mapfmt, MODPREFIX, argc - 1, argv + 1);
+ 	if (!ctxt->parse) {
+ 		logmsg(MODPREFIX "failed to open parse context");
+@@ -255,6 +265,14 @@ int lookup_mount(struct autofs_point *ap
+ 			warn(ap->logopt,
+ 			     MODPREFIX "failed to set PWD to %s for map %s",
+ 			     ap->path, ctxt->mapname);
++		/*
++		 * MAPFMT_DEFAULT must be "sun" for ->parse_init() to have setup
++		 * the macro table.
++		 */
++		if (ctxt->mapfmt && strcmp(ctxt->mapfmt, "MAPFMT_DEFAULT")) {
++			struct parse_context *pctxt = (struct parse_context *) ctxt->parse->context;
++			macro_setenv(pctxt->subst);
++		}
+ 		execl(ctxt->mapname, ctxt->mapname, name, NULL);
+ 		_exit(255);	/* execl() failed */
+ 	}
+@@ -448,6 +466,8 @@ int lookup_done(void *context)
+ {
+ 	struct lookup_context *ctxt = (struct lookup_context *) context;
+ 	int rv = close_parse(ctxt->parse);
++	if (ctxt->mapfmt)
++		free(ctxt->mapfmt);
+ 	free(ctxt);
+ 	return rv;
+ }

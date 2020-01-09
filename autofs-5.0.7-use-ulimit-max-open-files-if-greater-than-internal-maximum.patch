@@ -1,0 +1,30 @@
+autofs-5.0.7 - use ulimit max open files if greater than internal maximum
+
+From: Ian Kent <raven@themaw.net>
+
+When setting the maximum number of allowed file handles the current setting
+should be checked before setting it. If the ulimit command has been used to
+increase the maximum to larger than what automount would ask for then honour
+it.
+---
+ daemon/automount.c |    7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/daemon/automount.c b/daemon/automount.c
+index 019637f..1d0b64e 100644
+--- a/daemon/automount.c
++++ b/daemon/automount.c
+@@ -2106,8 +2106,11 @@ int main(int argc, char *argv[])
+ 		exit(1);
+ 	}
+ 
+-	rlim.rlim_cur = MAX_OPEN_FILES;
+-	rlim.rlim_max = MAX_OPEN_FILES;
++	res = getrlimit(RLIMIT_NOFILE, &rlim);
++	if (res == -1 || rlim.rlim_max <= MAX_OPEN_FILES)  {
++		rlim.rlim_cur = MAX_OPEN_FILES;
++		rlim.rlim_max = MAX_OPEN_FILES;
++	}
+ 	res = setrlimit(RLIMIT_NOFILE, &rlim);
+ 	if (res)
+ 		printf("%s: can't increase open file limit - continuing",

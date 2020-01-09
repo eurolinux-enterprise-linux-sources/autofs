@@ -1,0 +1,35 @@
+autofs-5.1.0-beta1 - fix typo in conf_load_autofs_defaults()
+
+From: Ian Kent <raven@themaw.net>
+
+
+---
+ CHANGELOG      |    1 +
+ lib/defaults.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/CHANGELOG b/CHANGELOG
+index 082020a..3565ab9 100644
+--- a/CHANGELOG
++++ b/CHANGELOG
+@@ -212,6 +212,7 @@
+ - fix old style key lookup.
+ - fix expire when server not responding.
+ - fix ldap_uri config update.
++- fix typo in conf_load_autofs_defaults().
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+diff --git a/lib/defaults.c b/lib/defaults.c
+index afce17e..473f6e3 100644
+--- a/lib/defaults.c
++++ b/lib/defaults.c
+@@ -320,7 +320,7 @@ static int conf_load_autofs_defaults(void)
+ 	if (ret == CFG_FAIL)
+ 		goto error;
+ 
+-	/* LDAP_URI nad SEARCH_BASE can occur multiple times */
++	/* LDAP_URI and SEARCH_BASE can occur multiple times */
+ 	while ((co = conf_lookup(sec, NAME_LDAP_URI)))
+ 		conf_delete(co->section, co->name);
+ 

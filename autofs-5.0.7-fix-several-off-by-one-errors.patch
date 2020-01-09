@@ -1,0 +1,118 @@
+autofs-5.0.7 - fix several off by one errors
+
+From: Ian Kent <raven@themaw.net>
+
+Fix several off-by-one array reference errors and a couple of short allocation
+errors.
+---
+ daemon/spawn.c         |   10 +++++-----
+ lib/defaults.c         |    2 +-
+ modules/lookup_ldap.c  |    8 ++++----
+ modules/parse_hesiod.c |    2 +-
+ modules/parse_sun.c    |    2 +-
+ 5 files changed, 12 insertions(+), 12 deletions(-)
+
+--- autofs-5.0.5.orig/daemon/spawn.c
++++ autofs-5.0.5/daemon/spawn.c
+@@ -320,7 +320,7 @@ int spawn_mount(unsigned logopt, ...)
+ 	unsigned int retries = MTAB_LOCK_RETRIES;
+ 	int update_mtab = 1, ret, printed = 0;
+ 	unsigned int wait = defaults_get_mount_wait();
+-	char buf[PATH_MAX];
++	char buf[PATH_MAX + 1];
+ 
+ 	/* If we use mount locking we can't validate the location */
+ #ifdef ENABLE_MOUNT_LOCKING
+@@ -345,7 +345,7 @@ int spawn_mount(unsigned logopt, ...)
+ 	}
+ 
+ 	/* Alloc 1 extra slot in case we need to use the "-f" option */
+-	if (!(argv = alloca(sizeof(char *) * argc + 2)))
++	if (!(argv = alloca(sizeof(char *) * (argc + 2))))
+ 		return -1;
+ 
+ 	argv[0] = arg0;
+@@ -447,7 +447,7 @@ int spawn_bind_mount(unsigned logopt, ..
+ 	unsigned int options;
+ 	unsigned int retries = MTAB_LOCK_RETRIES;
+ 	int update_mtab = 1, ret, printed = 0;
+-	char buf[PATH_MAX];
++	char buf[PATH_MAX + 1];
+ 
+ 	/* If we use mount locking we can't validate the location */
+ #ifdef ENABLE_MOUNT_LOCKING
+@@ -475,7 +475,7 @@ int spawn_bind_mount(unsigned logopt, ..
+ 		}
+ 	}
+ 
+-	if (!(argv = alloca(sizeof(char *) * argc + 2)))
++	if (!(argv = alloca(sizeof(char *) * (argc + 2))))
+ 		return -1;
+ 
+ 	argv[0] = arg0;
+@@ -554,7 +554,7 @@ int spawn_umount(unsigned logopt, ...)
+ 	unsigned int retries = MTAB_LOCK_RETRIES;
+ 	int update_mtab = 1, ret, printed = 0;
+ 	unsigned int wait = defaults_get_umount_wait();
+-	char buf[PATH_MAX];
++	char buf[PATH_MAX + 1];
+ 
+ #ifdef ENABLE_MOUNT_LOCKING
+ 	options = SPAWN_OPT_LOCK;
+--- autofs-5.0.5.orig/lib/defaults.c
++++ autofs-5.0.5/lib/defaults.c
+@@ -227,7 +227,7 @@ void defaults_free_uris(struct list_head
+ static unsigned int add_uris(char *value, struct list_head *list)
+ {
+ 	char *str, *tok, *ptr = NULL;
+-	size_t len = strlen(value);
++	size_t len = strlen(value) + 1;
+ 
+ 	str = alloca(len);
+ 	if (!str)
+--- autofs-5.0.5.orig/modules/lookup_ldap.c
++++ autofs-5.0.5/modules/lookup_ldap.c
+@@ -2293,8 +2293,8 @@ static int do_get_entries(struct ldap_se
+ 					mapent = new_me;
+ 					strcat(mapent, " ");
+ 					strncat(mapent, v_val, v_len);
+-					mapent[new_size] = '\0';
+-					mapent_len = new_size;
++					mapent[new_size - 1] = '\0';
++					mapent_len = new_size - 1;
+ 				} else {
+ 					char *estr;
+ 					estr = strerror_r(errno, buf, sizeof(buf));
+@@ -2782,8 +2782,8 @@ static int lookup_one(struct autofs_poin
+ 					mapent = new_me;
+ 					strcat(mapent, " ");
+ 					strncat(mapent, v_val, v_len);
+-					mapent[new_size] = '\0';
+-					mapent_len = new_size;
++					mapent[new_size - 1] = '\0';
++					mapent_len = new_size - 1;
+ 				} else {
+ 					char *estr;
+ 					estr = strerror_r(errno, buf, sizeof(buf));
+--- autofs-5.0.5.orig/modules/parse_hesiod.c
++++ autofs-5.0.5/modules/parse_hesiod.c
+@@ -117,7 +117,7 @@ static int parse_nfs(struct autofs_point
+ 		p++;
+ 
+ 	/* Isolate the remote mountpoint for this NFS fs. */
+-	for (i = 0; (!isspace(p[i]) && i < (int) sizeof(mount)); i++) {
++	for (i = 0; (!isspace(p[i]) && i < ((int) sizeof(mount) - 1)); i++) {
+ 		if (!p[i]) {
+ 			error(ap->logopt, MODPREFIX
+ 			      "unexpeced end of input looking for NFS "
+--- autofs-5.0.5.orig/modules/parse_sun.c
++++ autofs-5.0.5/modules/parse_sun.c
+@@ -1104,7 +1104,7 @@ static int mount_subtree(struct autofs_p
+ 			}
+ 			ro_len = strlen(ro_loc);
+ 
+-			tmp = alloca(mnt_root_len + 1);
++			tmp = alloca(mnt_root_len + 2);
+ 			strcpy(tmp, mnt_root);
+ 			tmp[mnt_root_len] = '/';
+ 			tmp[mnt_root_len + 1] = '\0';

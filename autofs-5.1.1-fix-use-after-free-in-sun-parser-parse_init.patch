@@ -1,0 +1,33 @@
+autofs-5.1.1 - fix use after free in sun parser parse_init()
+
+From: Ian Kent <raven@themaw.net>
+
+Change to free context in function it was allocated (parse_init) on
+error to avoid use after free.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ modules/parse_sun.c |    1 -
+ 2 files changed, 1 insertion(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -285,6 +285,7 @@
+ - fix direct map expire not set for initail empty map.
+ - fix memory leak in nisplus lookup_reinit().
+ - fix memory leak in ldap do_init().
++- fix use after free in sun parser parse_init().
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/parse_sun.c
++++ autofs-5.0.5/modules/parse_sun.c
+@@ -345,7 +345,6 @@ static int do_init(int argc, const char
+ 			}
+ 			if (!noptstr) {
+ 				char *estr = strerror_r(errno, buf, MAX_ERR_BUF);
+-				kill_context(ctxt);
+ 				logerr(MODPREFIX "%s", estr);
+ 				return 1;
+ 			}

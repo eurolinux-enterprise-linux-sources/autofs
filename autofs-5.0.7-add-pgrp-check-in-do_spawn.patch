@@ -1,0 +1,23 @@
+autofs-5.0.7 - add pgrp check in do_spawn()
+
+From: Ian Kent <raven@themaw.net>
+
+The process group should never be negative here but add a check anyway.
+---
+ daemon/spawn.c |    3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/daemon/spawn.c b/daemon/spawn.c
+index 9b8d5a2..abb353a 100644
+--- a/daemon/spawn.c
++++ b/daemon/spawn.c
+@@ -201,7 +201,8 @@ static int do_spawn(unsigned logopt, unsigned int wait,
+ 
+ 			seteuid(0);
+ 			setegid(0);
+-			setpgid(0, pgrp);
++			if (pgrp >= 0)
++				setpgid(0, pgrp);
+ 		}
+ 
+ 		execv(prog, (char *const *) argv);

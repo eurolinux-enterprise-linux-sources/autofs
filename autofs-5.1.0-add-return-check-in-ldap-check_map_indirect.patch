@@ -1,0 +1,68 @@
+autofs-5.1.0 - add return check in ldap check_map_indirect()
+
+From: Ian Kent <ikent@redhat.com>
+
+Fix not checking return from pthread_mutex_lock/pthread_mutex_unlock in
+modules/lookup_ldap.c:check_map_indirect().
+---
+ CHANGELOG             |    1 +
+ modules/lookup_ldap.c |   17 +++++++++++++----
+ 2 files changed, 14 insertions(+), 4 deletions(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -230,6 +230,7 @@
+ - fix leak in get_network_proximity().
+ - fix buffer size checks in merge_options().
+ - check amd lex buffer len before copy.
++- add return check in ldap check_map_indirect().
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/lookup_ldap.c
++++ autofs-5.0.5/modules/lookup_ldap.c
+@@ -3418,12 +3418,15 @@ static int check_map_indirect(struct aut
+ 	time_t now = time(NULL);
+ 	time_t t_last_read;
+ 	int ret, cur_state;
++	int status;
+ 
+ 	mc = source->mc;
+ 
+ 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cur_state);
+ 
+-	pthread_mutex_lock(&ap->entry->current_mutex);
++	status = pthread_mutex_lock(&ap->entry->current_mutex);
++	if (status)
++		fatal(status);
+ 	if (is_amd_format) {
+ 		unsigned long timestamp = get_amd_timestamp(ctxt);
+ 		if (timestamp > ctxt->timestamp) {
+@@ -3443,7 +3446,9 @@ static int check_map_indirect(struct aut
+ 				ctxt->check_defaults = 0;
+ 		}
+ 	}
+-	pthread_mutex_unlock(&ap->entry->current_mutex);
++	status = pthread_mutex_unlock(&ap->entry->current_mutex);
++	if (status)
++		fatal(status);
+ 
+ 	ret = match_key(ap, source, key, key_len, ctxt);
+ 	if (ret == CHE_FAIL) {
+@@ -3488,10 +3493,14 @@ static int check_map_indirect(struct aut
+ 		}
+ 		cache_unlock(mc);
+ 
+-		pthread_mutex_lock(&ap->entry->current_mutex);
++		status = pthread_mutex_lock(&ap->entry->current_mutex);
++		if (status)
++			fatal(status);
+ 		if (t_last_read > ap->exp_runfreq && ret & CHE_UPDATED)
+ 			source->stale = 1;
+-		pthread_mutex_unlock(&ap->entry->current_mutex);
++		status = pthread_mutex_unlock(&ap->entry->current_mutex);
++		if (status)
++			fatal(status);
+ 	}
+ 
+ 	cache_readlock(mc);

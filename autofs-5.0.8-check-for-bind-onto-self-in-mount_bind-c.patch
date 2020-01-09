@@ -1,0 +1,36 @@
+autofs-5.0.8 - check for bind onto self in mount_bind.c
+
+From: Ian Kent <raven@themaw.net>
+
+Check for an obviously impossible request to bind or symlink to the
+same patch for source and target.
+---
+ CHANGELOG            |    1 +
+ modules/mount_bind.c |    6 ++++++
+ 2 files changed, 7 insertions(+)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -173,6 +173,7 @@
+ - fix compilation of lookup_ldap.c without sasl.
+ - fix undefined authtype_requires_creds err if ldap enabled but without sasl.
+ - pass map_source as function paramter where possible.
++- check for bind onto self in mount_bind.c.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/mount_bind.c
++++ autofs-5.0.5/modules/mount_bind.c
+@@ -135,6 +135,12 @@ int mount_mount(struct autofs_point *ap,
+ 	if (options == NULL || *options == '\0')
+ 		options = "defaults";
+ 
++	if (!strcmp(what, fullpath)) {
++		debug(ap->logopt, MODPREFIX
++		     "cannot mount or symlink %s to itself", fullpath);
++		return 1;
++	}
++
+ 	if (!symlnk && bind_works) {
+ 		int status, existed = 1;
+ 

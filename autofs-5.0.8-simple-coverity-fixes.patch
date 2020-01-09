@@ -1,0 +1,78 @@
+autofs-5.0.8 - simple coverity fixes
+
+From: Ian Kent <ikent@redhat.com>
+
+Add a couple of simple corrections reported by Coverity.
+---
+ CHANGELOG                |    1 +
+ daemon/lookup.c          |    3 ++-
+ modules/lookup_hosts.c   |    3 ++-
+ modules/lookup_program.c |    3 ++-
+ modules/mount_bind.c     |    4 ++--
+ 5 files changed, 9 insertions(+), 5 deletions(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -190,6 +190,7 @@
+ - fix lookup_nss_mount() map lookup.
+ - dont ignore null cache entries on multi mount umount.
+ - fix inconsistent error returns in handle_packet_missing_direct().
++- simple coverity fixes.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/daemon/lookup.c
++++ autofs-5.0.5/daemon/lookup.c
+@@ -957,7 +957,8 @@ static void update_negative_cache(struct
+ 				rv = cache_update(map->mc, map, name, NULL, now);
+ 			if (rv != CHE_FAIL) {
+ 				me = cache_lookup_distinct(map->mc, name);
+-				me->status = now + ap->negative_timeout;
++				if (me)
++					me->status = now + ap->negative_timeout;
+ 			}
+ 			cache_unlock(map->mc);
+ 		}
+--- autofs-5.0.5.orig/modules/lookup_hosts.c
++++ autofs-5.0.5/modules/lookup_hosts.c
+@@ -161,7 +161,8 @@ static int do_parse_mount(struct autofs_
+ 			rv = cache_update(mc, source, name, NULL, now);
+ 		if (rv != CHE_FAIL) {
+ 			me = cache_lookup_distinct(mc, name);
+-			me->status = now + ap->negative_timeout;
++			if (me)
++				me->status = now + ap->negative_timeout;
+ 		}
+ 		cache_unlock(mc);
+ 		return NSS_STATUS_TRYAGAIN;
+--- autofs-5.0.5.orig/modules/lookup_program.c
++++ autofs-5.0.5/modules/lookup_program.c
+@@ -459,7 +459,8 @@ out_free:
+ 			rv = cache_update(mc, source, name, NULL, now);
+ 		if (rv != CHE_FAIL) {
+ 			me = cache_lookup_distinct(mc, name);
+-			me->status = now + ap->negative_timeout;
++			if (me)
++				me->status = now + ap->negative_timeout;
+ 		}
+ 		cache_unlock(mc);
+ 		return NSS_STATUS_TRYAGAIN;
+--- autofs-5.0.5.orig/modules/mount_bind.c
++++ autofs-5.0.5/modules/mount_bind.c
+@@ -214,14 +214,14 @@ int mount_mount(struct autofs_point *ap,
+ 			      MODPREFIX
+ 			      "failed to create symlink %s -> %s",
+ 			      fullpath, what);
+-			if (ap->flags & MOUNT_FLAG_GHOST && !status)
++			if (ap->flags & MOUNT_FLAG_GHOST && !status) {
+ 				if (mkdir_path(fullpath, 0555) && errno != EEXIST) {
+ 					char *estr = strerror_r(errno, buf, MAX_ERR_BUF);
+ 					error(ap->logopt,
+ 					      MODPREFIX "mkdir_path %s failed: %s",
+ 					      fullpath, estr);
+ 				}
+-			else {
++			} else {
+ 				if (ap->type == LKP_INDIRECT)
+ 					rmdir_path(ap, fullpath, ap->dev);
+ 			}

@@ -1,0 +1,112 @@
+autofs-5.0.9 - amd lookup dont umount admin mounted external mounts
+
+From: Ian Kent <raven@themaw.net>
+
+If an autofs doesn't mount an external mount then it shouldn't
+umount it.
+---
+ include/mounts.h    |    2 +-
+ lib/mounts.c        |    7 +++++--
+ modules/parse_amd.c |    8 ++++++--
+ 3 files changed, 12 insertions(+), 5 deletions(-)
+
+diff --git a/include/mounts.h b/include/mounts.h
+index 07a8c3b..17cae31 100644
+--- a/include/mounts.h
++++ b/include/mounts.h
+@@ -101,7 +101,7 @@ unsigned int get_kver_major(void);
+ unsigned int get_kver_minor(void);
+ char *make_options_string(char *path, int kernel_pipefd, const char *extra);
+ char *make_mnt_name_string(char *path);
+-int ext_mount_add(struct list_head *, const char *);
++int ext_mount_add(struct list_head *, const char *, unsigned int);
+ int ext_mount_remove(struct list_head *, const char *);
+ struct mnt_list *get_mnt_list(const char *table, const char *path, int include);
+ struct mnt_list *reverse_mnt_list(struct mnt_list *list);
+diff --git a/lib/mounts.c b/lib/mounts.c
+index d8357d0..c9e1237 100644
+--- a/lib/mounts.c
++++ b/lib/mounts.c
+@@ -51,6 +51,7 @@ static const char kver_options_template[]  = "fd=%d,pgrp=%u,minproto=3,maxproto=
+ 
+ struct ext_mount {
+ 	char *mountpoint;
++	unsigned int umount;
+ 	struct list_head mount;
+ 	struct list_head mounts;
+ };
+@@ -619,7 +620,7 @@ static struct ext_mount *ext_mount_lookup(const char *mountpoint)
+ 	return NULL;
+ }
+ 
+-int ext_mount_add(struct list_head *entry, const char *path)
++int ext_mount_add(struct list_head *entry, const char *path, unsigned int umount)
+ {
+ 	struct ext_mount *em;
+ 	char *auto_dir;
+@@ -661,6 +662,7 @@ int ext_mount_add(struct list_head *entry, const char *path)
+ 		ret = -1;
+ 		goto done;
+ 	}
++	em->umount = umount;
+ 	INIT_LIST_HEAD(&em->mount);
+ 	INIT_LIST_HEAD(&em->mounts);
+ 
+@@ -701,11 +703,12 @@ int ext_mount_remove(struct list_head *entry, const char *path)
+ 		goto done;
+ 	else {
+ 		list_del_init(&em->mount);
++		if (em->umount)
++			ret = 1;
+ 		if (list_empty(&em->mount)) {
+ 			free(em->mountpoint);
+ 			free(em);
+ 		}
+-		ret = 1;
+ 	}
+ done:
+ 	pthread_mutex_unlock(&ext_mount_hash_mutex);
+diff --git a/modules/parse_amd.c b/modules/parse_amd.c
+index fa0f75d..bc056a7 100644
+--- a/modules/parse_amd.c
++++ b/modules/parse_amd.c
+@@ -978,6 +978,7 @@ static int do_generic_mount(struct autofs_point *ap, const char *name,
+ 			    struct amd_entry *entry, const char *target,
+ 			    unsigned int flags)
+ {
++	unsigned int umount = 0;
+ 	int ret = 0;
+ 
+ 	if (!entry->sublink) {
+@@ -994,9 +995,10 @@ static int do_generic_mount(struct autofs_point *ap, const char *name,
+ 				       target, entry->type, entry->opts);
+ 			if (ret)
+ 				goto out;
++			umount = 1;
+ 		}
+ 		/* We might be using an external mount */
+-		ext_mount_add(&entry->ext_mount, entry->fs);
++		ext_mount_add(&entry->ext_mount, entry->fs, umount);
+ 		ret = do_link_mount(ap, name, entry, flags);
+ 	}
+ out:
+@@ -1009,6 +1011,7 @@ static int do_nfs_mount(struct autofs_point *ap, const char *name,
+ 	char target[PATH_MAX + 1];
+ 	unsigned int proximity;
+ 	char *opts = entry->opts;
++	unsigned int umount = 0;
+ 	int ret = 0;
+ 
+ 	strcpy(target, entry->rhost);
+@@ -1030,9 +1033,10 @@ static int do_nfs_mount(struct autofs_point *ap, const char *name,
+ 						mount_nfs->context);
+ 			if (ret)
+ 				goto out;
++			umount = 1;
+ 		}
+ 		/* We might be using an external mount */
+-		ext_mount_add(&entry->ext_mount, entry->fs);
++		ext_mount_add(&entry->ext_mount, entry->fs, umount);
+ 		ret = do_link_mount(ap, name, entry, flags);
+ 	}
+ out:

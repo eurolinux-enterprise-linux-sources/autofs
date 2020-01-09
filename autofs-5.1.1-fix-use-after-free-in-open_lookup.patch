@@ -1,0 +1,32 @@
+autofs-5.1.1 - fix use after free in open_lookup()
+
+From: Ian Kent <raven@themaw.net>
+
+If storage can't be allocated for module type error exit.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG       |    1 +
+ daemon/module.c |    1 +
+ 2 files changed, 2 insertions(+)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -286,6 +286,7 @@
+ - fix memory leak in nisplus lookup_reinit().
+ - fix memory leak in ldap do_init().
+ - fix use after free in sun parser parse_init().
++- fix use after free in open_lookup().
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/daemon/module.c
++++ autofs-5.0.5/daemon/module.c
+@@ -83,6 +83,7 @@ int open_lookup(const char *name, const
+ 			char *estr = strerror_r(errno, buf, MAX_ERR_BUF);
+ 			logerr("%s%s", err_prefix, estr);
+ 		}
++		return NSS_STATUS_UNAVAIL;
+ 	}
+ 
+ 	size = snprintf(fnbuf, sizeof(fnbuf),

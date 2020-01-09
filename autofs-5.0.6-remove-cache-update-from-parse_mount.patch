@@ -1,0 +1,49 @@
+autofs-5.0.6 - remove cache update from parse_mount()
+
+From: Ian Kent <ikent@redhat.com>
+
+I'm not sure why I added this update in the parse sun module.
+
+The lookup modules have the job of updating the map entry cache and
+I can't see why an entry would be missing since the parse function
+is called following the entry lookup (which does the update).
+---
+
+ modules/parse_sun.c |   23 -----------------------
+ 1 files changed, 0 insertions(+), 23 deletions(-)
+
+
+diff --git a/modules/parse_sun.c b/modules/parse_sun.c
+index e2c36ad..c4decbc 100644
+--- a/modules/parse_sun.c
++++ b/modules/parse_sun.c
+@@ -1383,29 +1383,6 @@ int parse_mount(struct autofs_point *ap, const char *name,
+ 			strcat(m_root, name);
+ 		}
+ 
+-		/*
+-		 * Can't take the write lock for direct mount entries here
+-		 * but they should always be present in the map entry cache.
+-		 */
+-		if (ap->type == LKP_INDIRECT) {
+-			cache_writelock(mc);
+-			me = cache_lookup_distinct(mc, name);
+-			if (!me) {
+-				int ret;
+-				/*
+-				 * Not in the cache, perhaps it's a program map
+-				 * or one that doesn't support enumeration.
+-				 */
+-				ret = cache_add(mc, source, name, mapent, age);
+-				if (ret == CHE_FAIL) {
+-					cache_unlock(mc);
+-					free(options);
+-					return 1;
+-				}
+-			}
+-			cache_unlock(mc);
+-		}
+-
+ 		cache_readlock(mc);
+ 		me = cache_lookup_distinct(mc, name);
+ 		if (me) {

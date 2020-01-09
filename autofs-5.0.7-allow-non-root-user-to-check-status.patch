@@ -1,0 +1,65 @@
+autofs-5.0.7 - allow non root user to check status
+
+From: Ian Kent <ikent@redhat.com>
+
+
+---
+
+ CHANGELOG             |    1 +
+ redhat/autofs.init.in |   20 +++++++++++++-------
+ 2 files changed, 14 insertions(+), 7 deletions(-)
+
+
+--- autofs-5.0.5.orig/redhat/autofs.init.in
++++ autofs-5.0.5/redhat/autofs.init.in
+@@ -167,6 +167,19 @@ function usage_message() {
+ 
+ RETVAL=0
+ 
++# allow non-root users to read status / usage
++
++case "$1" in
++	status)
++		status -p @@autofspiddir@@/autofs.pid -l autofs $prog
++		exit 0;
++		;;
++	usage)
++		usage_message
++		exit 0;
++		;;
++esac
++
+ # Only the root user may change the service status
+ if [ `id -u` -ne 0 ]; then
+ 	echo "insufficient privilege to change service status"
+@@ -184,9 +197,6 @@ case "$1" in
+ 	stop)
+ 		stop
+ 		;;
+-	status)
+-		status -p /var/run/autofs.pid -l autofs $prog
+-		;;
+ 	restart|force-reload)
+ 		restart
+ 		;;
+@@ -202,10 +212,6 @@ case "$1" in
+ 			restart
+ 		fi
+ 		;;
+-	usage)
+-		usage_message
+-		exit 0;
+-		;;
+ 	*)
+ 		usage_message
+ 		exit 2
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -114,6 +114,7 @@
+ - add hup signal handling to hosts map.
+ - fix offset directory removal.
+ - fix null map entry order handling.
++- allow non root user to check status.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------

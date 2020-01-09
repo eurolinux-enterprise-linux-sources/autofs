@@ -1,0 +1,31 @@
+autofs-5.1.0 - fix typo in update_hosts_mounts()
+
+From: Ian Kent <ikent@redhat.com>
+
+Correct the stutter in the update exports message.
+---
+ CHANGELOG              |    1 +
+ modules/lookup_hosts.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -246,6 +246,7 @@
+ - ensure negative cache isn't updated on remount.
+ - dont add wildcard to negative cache.
+ - fix fix master map type check.
++- fix typo in update_hosts_mounts().
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/lookup_hosts.c
++++ autofs-5.0.5/modules/lookup_hosts.c
+@@ -205,7 +205,7 @@ next:
+ 			goto cont;
+ 
+ 		debug(ap->logopt, MODPREFIX
+-		      "attempt to update exports for exports for %s", me->key);
++		      "attempt to update exports for %s", me->key);
+ 
+ 		master_source_current_wait(ap->entry);
+ 		ap->entry->current = source;

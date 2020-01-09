@@ -1,0 +1,51 @@
+autofs-5.0.8 - fixes for samples/auto.master
+
+From: Vincent McIntyre <vincent.mcintyre@csiro.au>
+
+Replace description that described regular automount maps, not
+master maps. Add a note about the format of included files.
+Clarify what happens to master map options not consumed by
+'mount'.
+
+Signed-off-by: <vincent.mcintyre@csiro.au>
+---
+ CHANGELOG            |    1 +
+ man/auto.master.5.in |    2 +-
+ samples/auto.master  |    6 +++---
+ 3 files changed, 5 insertions(+), 4 deletions(-)
+
+--- autofs-5.0.5.orig/man/auto.master.5.in
++++ autofs-5.0.5/man/auto.master.5.in
+@@ -131,7 +131,7 @@ the \fBdn\fP of an LDAP entry for maps o
+ .br
+ Any remaining command line arguments without leading dashes (\-) are
+ taken as options (\fI\-o\fP) to \fBmount\fP.  Arguments with leading
+-dashes are considered options for the maps.
++dashes are considered options for the maps and are passed to automount (8).
+ .sp
+ The \fBsun\fP format supports the following options:
+ .RS
+--- autofs-5.0.5.orig/samples/auto.master
++++ autofs-5.0.5/samples/auto.master
+@@ -1,8 +1,8 @@
+ #
+ # Sample auto.master file
+-# This is an automounter map and it has the following format
+-# key [ -mount-options-separated-by-comma ] location
+-# For details of the format look at autofs(5).
++# This is a 'master' automounter map and it has the following format:
++# mount-point [map-type[,format]:]map [options]
++# For details of the format look at auto.master(5).
+ #
+ /misc	/etc/auto.misc
+ #
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -191,6 +191,7 @@
+ - dont ignore null cache entries on multi mount umount.
+ - fix inconsistent error returns in handle_packet_missing_direct().
+ - simple coverity fixes.
++- fixes for samples/auto.master.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------

@@ -1,0 +1,55 @@
+autofs-5.0.6 - add kernel verion check function
+
+From: Ian Kent <ikent@redhat.com>
+
+Add a function to check kernel version.
+---
+
+ CHANGELOG        |    1 +
+ include/mounts.h |   17 +++++++++++++++++
+ 2 files changed, 18 insertions(+)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -82,6 +82,7 @@
+ - fix submount shutdown race.
+ - fix wait for master source mutex.
+ - fix fix wait for master source mutex.
++- add kernel verion check function.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/include/mounts.h
++++ autofs-5.0.5/include/mounts.h
+@@ -16,6 +16,9 @@
+ #ifndef MOUNTS_H
+ #define MOUNTS_H
+ 
++#include <linux/version.h>
++#include <sys/utsname.h>
++
+ #ifndef AUTOFS_TYPE_ANY
+ #define AUTOFS_TYPE_ANY		0x0000
+ #endif
+@@ -72,6 +75,20 @@ struct mnt_list {
+ 	struct list_head ordered;
+ };
+ 
++static inline unsigned int linux_version_code(void)
++{
++        struct utsname my_utsname;
++        unsigned int p, q, r;
++
++        if (uname(&my_utsname))
++                return 0;
++
++        p = (unsigned int)atoi(strtok(my_utsname.release, "."));
++        q = (unsigned int)atoi(strtok(NULL, "."));
++        r = (unsigned int)atoi(strtok(NULL, "."));
++        return KERNEL_VERSION(p, q, r);
++}
++
+ unsigned int query_kproto_ver(void);
+ unsigned int get_kver_major(void);
+ unsigned int get_kver_minor(void);

@@ -1,0 +1,24 @@
+autofs-5.1.0 - fix memory leak in create_client()
+
+From: Ian Kent <raven@themaw.net>
+
+In create_client(), if the target host is unreachable the function
+exists without freeing the addrinfo data returned from getaddrinfo(3).
+---
+ lib/rpc_subs.c |    4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/lib/rpc_subs.c
++++ autofs-5.0.5/lib/rpc_subs.c
+@@ -384,8 +384,10 @@ static int create_client(struct conn_inf
+ 		ret = rpc_do_create_client(haddr->ai_addr, info, &fd, client);
+ 		if (ret == 0)
+ 			break;
+-		if (ret == -EHOSTUNREACH)
++		if (ret == -EHOSTUNREACH) {
++			freeaddrinfo(ai);
+ 			goto out_close;
++		}
+ 
+ 		if (!info->client && fd != RPC_ANYSOCK) {
+ 			close(fd);

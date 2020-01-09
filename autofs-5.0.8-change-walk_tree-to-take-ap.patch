@@ -1,0 +1,226 @@
+autofs-5.0.8 - change walk_tree() to take ap
+
+From: Ian Kent <raven@themaw.net>
+
+Change walk_tree() to take an autofs_point pointer instead of
+logopt.
+---
+ CHANGELOG           |    1 +
+ daemon/automount.c  |   49 +++++++++++++++++++++++++++++--------------------
+ daemon/direct.c     |    2 +-
+ daemon/indirect.c   |    6 +++---
+ include/automount.h |    4 ++--
+ 5 files changed, 36 insertions(+), 26 deletions(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -180,6 +180,7 @@
+ - fix bad mkdir permission on create.
+ - fix macro_addvar() and move init to main thread.
+ - fix file descriptor leak when reloading the daemon.
++- change walk_tree() to take ap.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/daemon/automount.c
++++ autofs-5.0.5/daemon/automount.c
+@@ -254,10 +254,12 @@ int rmdir_path(struct autofs_point *ap,
+ /* Like ftw, except fn gets called twice: before a directory is
+    entered, and after.  If the before call returns 0, the directory
+    isn't entered. */
+-static int walk_tree(const char *base, int (*fn) (unsigned logopt,
++static int walk_tree(const char *base, int (*fn) (struct autofs_point *ap,
+ 						  const char *file,
+ 						  const struct stat * st,
+-						  int, void *), int incl, unsigned logopt, void *arg)
++						  int, void *), int incl,
++						  struct autofs_point *ap,
++						  void *arg)
+ {
+ 	char buf[PATH_MAX + 1];
+ 	struct stat st, *pst = &st;
+@@ -270,7 +272,7 @@ static int walk_tree(const char *base, i
+ 		ret = 0;
+ 	}
+ 
+-	if (ret != -1 && (fn) (logopt, base, pst, 0, arg)) {
++	if (ret != -1 && (fn) (ap, base, pst, 0, arg)) {
+ 		if (S_ISDIR(st.st_mode)) {
+ 			struct dirent **de;
+ 			int n;
+@@ -298,18 +300,20 @@ static int walk_tree(const char *base, i
+ 					return -1;
+ 				}
+ 
+-				walk_tree(buf, fn, 1, logopt, arg);
++				walk_tree(buf, fn, 1, ap, arg);
+ 				free(de[n]);
+ 			}
+ 			free(de);
+ 		}
+ 		if (incl)
+-			(fn) (logopt, base, pst, 1, arg);
++			(fn) (ap, base, pst, 1, arg);
+ 	}
+ 	return 0;
+ }
+ 
+-static int rm_unwanted_fn(unsigned logopt, const char *file, const struct stat *st, int when, void *arg)
++static int rm_unwanted_fn(struct autofs_point *ap,
++			  const char *file, const struct stat *st,
++			  int when, void *arg)
+ {
+ 	dev_t dev = *(dev_t *) arg;
+ 	char buf[MAX_ERR_BUF];
+@@ -325,38 +329,40 @@ static int rm_unwanted_fn(unsigned logop
+ 	}
+ 
+ 	if (lstat(file, &newst)) {
+-		crit(logopt, "unable to stat file, possible race condition");
++		crit(ap->logopt,
++		     "unable to stat file, possible race condition");
+ 		return 0;
+ 	}
+ 
+ 	if (newst.st_dev != dev) {
+-		crit(logopt, "file %s has the wrong device, possible race condition",
++		crit(ap->logopt,
++		     "file %s has the wrong device, possible race condition",
+ 		     file);
+ 		return 0;
+ 	}
+ 
+ 	if (S_ISDIR(newst.st_mode)) {
+-		debug(logopt, "removing directory %s", file);
++		debug(ap->logopt, "removing directory %s", file);
+ 		if (rmdir(file)) {
+ 			char *estr = strerror_r(errno, buf, MAX_ERR_BUF);
+-			warn(logopt,
++			warn(ap->logopt,
+ 			      "unable to remove directory %s: %s", file, estr);
+ 			return 0;
+ 		}
+ 	} else if (S_ISREG(newst.st_mode)) {
+-		crit(logopt, "attempting to remove files from a mounted "
++		crit(ap->logopt, "attempting to remove files from a mounted "
+ 		     "directory. file %s", file);
+ 		return 0;
+ 	} else if (S_ISLNK(newst.st_mode)) {
+-		debug(logopt, "removing symlink %s", file);
++		debug(ap->logopt, "removing symlink %s", file);
+ 		unlink(file);
+ 	}
+ 	return 1;
+ }
+ 
+-void rm_unwanted(unsigned logopt, const char *path, int incl, dev_t dev)
++void rm_unwanted(struct autofs_point *ap, const char *path, int incl)
+ {
+-	walk_tree(path, rm_unwanted_fn, incl, logopt, &dev);
++	walk_tree(path, rm_unwanted_fn, incl, ap, &ap->dev);
+ }
+ 
+ struct counter_args {
+@@ -364,7 +370,8 @@ struct counter_args {
+ 	dev_t dev;
+ };
+ 
+-static int counter_fn(unsigned logopt, const char *file, const struct stat *st, int when, void *arg)
++static int counter_fn(struct autofs_point *ap, const char *file,
++		      const struct stat *st, int when, void *arg)
+ {
+ 	struct counter_args *counter = (struct counter_args *) arg;
+ 
+@@ -378,14 +385,14 @@ static int counter_fn(unsigned logopt, c
+ }
+ 
+ /* Count mounted filesystems and symlinks */
+-int count_mounts(unsigned logopt, const char *path, dev_t dev)
++int count_mounts(struct autofs_point *ap, const char *path, dev_t dev)
+ {
+ 	struct counter_args counter;
+ 
+ 	counter.count = 0;
+ 	counter.dev = dev;
+ 	
+-	if (walk_tree(path, counter_fn, 0, logopt, &counter) == -1)
++	if (walk_tree(path, counter_fn, 0, ap, &counter) == -1)
+ 		return -1;
+ 
+ 	return counter.count;
+@@ -409,9 +416,9 @@ static void check_rm_dirs(struct autofs_
+ 	    (ap->state == ST_SHUTDOWN_PENDING ||
+ 	     ap->state == ST_SHUTDOWN_FORCE ||
+ 	     ap->state == ST_SHUTDOWN))
+-		rm_unwanted(ap->logopt, path, incl, ap->dev);
++		rm_unwanted(ap, path, incl);
+ 	else if ((ap->flags & MOUNT_FLAG_GHOST) && (ap->type == LKP_INDIRECT))
+-		rm_unwanted(ap->logopt, path, 0, ap->dev);
++		rm_unwanted(ap, path, 0);
+ }
+ 
+ /* Try to purge cache entries kept around due to existing mounts */
+@@ -553,7 +560,9 @@ int umount_multi(struct autofs_point *ap
+ 	left += umount_subtree_mounts(ap, path, is_autofs_fs);
+ 
+ 	/* Delete detritus like unwanted mountpoints and symlinks */
+-	if (left == 0 && ap->state != ST_READMAP) {
++	if (left == 0 &&
++	    ap->state != ST_READMAP &&
++	    !count_mounts(ap, path, ap->dev)) {
+ 		update_map_cache(ap, path);
+ 		check_rm_dirs(ap, path, incl);
+ 	}
+--- autofs-5.0.5.orig/daemon/direct.c
++++ autofs-5.0.5/daemon/direct.c
+@@ -912,7 +912,7 @@ void *expire_proc_direct(void *arg)
+ 			cache_writelock(me->mc);
+ 			if (me->ioctlfd != -1 && 
+ 			    fstat(me->ioctlfd, &st) != -1 &&
+-			    !count_mounts(ap->logopt, next->path, st.st_dev)) {
++			    !count_mounts(ap, next->path, st.st_dev)) {
+ 				ops->close(ap->logopt, me->ioctlfd);
+ 				me->ioctlfd = -1;
+ 				cache_unlock(me->mc);
+--- autofs-5.0.5.orig/daemon/indirect.c
++++ autofs-5.0.5/daemon/indirect.c
+@@ -365,7 +365,7 @@ force_umount:
+ 	} else {
+ 		info(ap->logopt, "umounted indirect mount %s", mountpoint);
+ 		if (ap->submount)
+-			rm_unwanted(ap->logopt, mountpoint, 1, ap->dev);
++			rm_unwanted(ap, mountpoint, 1);
+ 	}
+ 
+ 	return rv;
+@@ -476,7 +476,7 @@ void *expire_proc_indirect(void *arg)
+ 
+ 				/* Check for manual umount */
+ 				if (fstat(me->ioctlfd, &st) == -1 ||
+-				    !count_mounts(ap->logopt, me->key, st.st_dev)) {
++				    !count_mounts(ap, me->key, st.st_dev)) {
+ 					ops->close(ap->logopt, me->ioctlfd);
+ 					me->ioctlfd = -1;
+ 				}
+@@ -538,7 +538,7 @@ void *expire_proc_indirect(void *arg)
+ 	 * so we need to umount or unlink them here.
+ 	 */
+ 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cur_state);
+-	retries = (count_mounts(ap->logopt, ap->path, ap->dev) + 1);
++	retries = (count_mounts(ap, ap->path, ap->dev) + 1);
+ 	while (retries--) {
+ 		ret = ops->expire(ap->logopt, ap->ioctlfd, ap->path, now);
+ 		if (ret)
+--- autofs-5.0.5.orig/include/automount.h
++++ autofs-5.0.5/include/automount.h
+@@ -523,8 +523,8 @@ int handle_packet_expire_indirect(struct
+ int handle_packet_expire_direct(struct autofs_point *ap, autofs_packet_expire_direct_t *pkt);
+ int handle_packet_missing_indirect(struct autofs_point *ap, autofs_packet_missing_indirect_t *pkt);
+ int handle_packet_missing_direct(struct autofs_point *ap, autofs_packet_missing_direct_t *pkt);
+-void rm_unwanted(unsigned logopt, const char *path, int incl, dev_t dev);
+-int count_mounts(unsigned logopt, const char *path, dev_t dev);
++void rm_unwanted(struct autofs_point *ap, const char *path, int incl);
++int count_mounts(struct autofs_point *ap, const char *path, dev_t dev);
+ 
+ #define mounts_mutex_lock(ap) \
+ do { \

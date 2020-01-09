@@ -1,0 +1,33 @@
+autofs-5.1.1 - fix typo in autofs_sasl_bind()
+
+From: Ian Kent <raven@themaw.net>
+
+Changes to autofs_sasl_bind() introduced an incorrect variable reference.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG            |    1 +
+ modules/cyrus-sasl.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -287,6 +287,7 @@
+ - fix memory leak in ldap do_init().
+ - fix use after free in sun parser parse_init().
+ - fix use after free in open_lookup().
++- fix typo in autofs_sasl_bind().
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/cyrus-sasl.c
++++ autofs-5.0.5/modules/cyrus-sasl.c
+@@ -928,7 +928,7 @@ autofs_sasl_bind(unsigned logopt,
+ 	else
+ 		sasl_conn = sasl_choose_mech(logopt, conn->ldap, ctxt);
+ 
+-	if (!conn)
++	if (!sasl_conn)
+ 		return -1;
+ 
+ 	conn->sasl_conn = sasl_conn;

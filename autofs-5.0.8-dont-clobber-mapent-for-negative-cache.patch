@@ -1,0 +1,354 @@
+autofs-5.0.8 - dont clobber mapent for negative cache
+
+From: Ian Kent <raven@themaw.net>
+
+When negative caching a map entry on mount fail don't save the mapent
+and restore it when the negative cache timeout expires.
+
+Deleting the mapent, as is done now, can be expensive especially when
+it causes a file read for a large file map.
+---
+ CHANGELOG                |    1 
+ daemon/lookup.c          |    6 ++-
+ include/automount.h      |    9 ++++
+ lib/cache.c              |   85 ++++++++++++++++++++++++++++++++++++++++++++++-
+ modules/lookup_file.c    |    6 ++-
+ modules/lookup_hosts.c   |   10 +++--
+ modules/lookup_ldap.c    |    6 ++-
+ modules/lookup_nisplus.c |   10 +++--
+ modules/lookup_program.c |   10 +++--
+ modules/lookup_sss.c     |    6 ++-
+ modules/lookup_yp.c      |    6 ++-
+ 11 files changed, 136 insertions(+), 19 deletions(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -176,6 +176,7 @@
+ - check for bind onto self in mount_bind.c.
+ - fix symlink expire.
+ - fix master map type check.
++- dont clobber mapent for negative cache.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/daemon/lookup.c
++++ autofs-5.0.5/daemon/lookup.c
+@@ -858,7 +858,11 @@ static void update_negative_cache(struct
+ 			int rv = CHE_FAIL;
+ 
+ 			cache_writelock(map->mc);
+-			rv = cache_update(map->mc, map, name, NULL, now);
++			me = cache_lookup_distinct(map->mc, name);
++			if (me)
++				rv = cache_push_mapent(me, NULL);
++			else
++				rv = cache_update(map->mc, map, name, NULL, now);
+ 			if (rv != CHE_FAIL) {
+ 				me = cache_lookup_distinct(map->mc, name);
+ 				me->status = now + ap->negative_timeout;
+--- autofs-5.0.5.orig/include/automount.h
++++ autofs-5.0.5/include/automount.h
+@@ -145,6 +145,12 @@ struct mapent_cache {
+ 	struct mapent **hash;
+ };
+ 
++struct stack {
++	char *mapent;
++	time_t age;
++	struct stack *next;
++};
++
+ struct mapent {
+ 	struct mapent *next;
+ 	struct list_head ino_index;
+@@ -158,6 +164,7 @@ struct mapent {
+ 	struct mapent *parent;
+ 	char *key;
+ 	char *mapent;
++	struct stack *stack;
+ 	time_t age;
+ 	/* Time of last mount fail */
+ 	time_t status;
+@@ -174,6 +181,8 @@ void cache_readlock(struct mapent_cache
+ void cache_writelock(struct mapent_cache *mc);
+ int cache_try_writelock(struct mapent_cache *mc);
+ void cache_unlock(struct mapent_cache *mc);
++int cache_push_mapent(struct mapent *me, char *mapent);
++int cache_pop_mapent(struct mapent *me);
+ struct mapent_cache *cache_init(struct autofs_point *ap, struct map_source *map);
+ struct mapent_cache *cache_init_null_cache(struct master *master);
+ int cache_set_ino_index(struct mapent_cache *mc, const char *key, dev_t dev, ino_t ino);
+--- autofs-5.0.5.orig/lib/cache.c
++++ autofs-5.0.5/lib/cache.c
+@@ -177,6 +177,69 @@ static inline void ino_index_unlock(stru
+ 	return;
+ }
+ 
++/* Save the cache entry mapent field onto a stack and set a new mapent */
++int cache_push_mapent(struct mapent *me, char *mapent)
++{
++	struct stack *s;
++	char *new;
++
++	if (!me->mapent)
++		return CHE_FAIL;
++
++	if (!mapent)
++		new = NULL;
++	else {
++		new = strdup(mapent);
++		if (!new)
++			return CHE_FAIL;
++	}
++
++	s = malloc(sizeof(struct stack));
++	if (!s) {
++		if (new)
++			free(new);
++		return CHE_FAIL;
++	}
++	memset(s, 0, sizeof(*s));
++
++	s->mapent = me->mapent;
++	s->age = me->age;
++	me->mapent = mapent;
++
++	if (me->stack)
++		s->next = me->stack;
++	me->stack = s;
++
++	return CHE_OK;
++}
++
++/* Restore cache entry mapent to a previously saved mapent, discard current */
++int cache_pop_mapent(struct mapent *me)
++{
++	struct stack *s = me->stack;
++	char *mapent;
++	time_t age;
++
++	if (!s || !s->mapent)
++		return CHE_FAIL;
++
++	mapent = s->mapent;
++	age = s->age;
++	me->stack = s->next;
++	free(s);
++
++	if (age < me->age) {
++		free(mapent);
++		return CHE_OK;
++	}
++
++	if (me->mapent)
++		free(me->mapent);
++	me->mapent = mapent;
++
++	return CHE_OK;
++}
++
+ struct mapent_cache *cache_init(struct autofs_point *ap, struct map_source *map)
+ {
+ 	struct mapent_cache *mc;
+@@ -578,6 +641,8 @@ int cache_add(struct mapent_cache *mc, s
+ 	} else
+ 		me->mapent = NULL;
+ 
++	me->stack = NULL;
++
+ 	me->age = age;
+ 	me->status = 0;
+ 	me->mc = mc;
+@@ -689,7 +754,9 @@ void cache_update_negative(struct mapent
+ 	int rv = CHE_OK;
+ 
+ 	me = cache_lookup_distinct(mc, key);
+-	if (!me)
++	if (me)
++		rv = cache_push_mapent(me, NULL);
++	else
+ 		rv = cache_update(mc, ms, key, NULL, now);
+ 	if (rv != CHE_FAIL) {
+ 		me = cache_lookup_distinct(mc, key);
+@@ -858,6 +925,7 @@ int cache_delete(struct mapent_cache *mc
+ 		pred = me;
+ 		me = me->next;
+ 		if (strcmp(this, me->key) == 0) {
++			struct stack *s = me->stack;
+ 			if (me->multi && !list_empty(&me->multi_list)) {
+ 				ret = CHE_FAIL;
+ 				goto done;
+@@ -872,6 +940,13 @@ int cache_delete(struct mapent_cache *mc
+ 			free(me->key);
+ 			if (me->mapent)
+ 				free(me->mapent);
++			while (s) {
++				struct stack *next = s->next;
++				if (s->mapent)
++					free(s->mapent);
++				free(s);
++				s = next;
++			}
+ 			free(me);
+ 			me = pred;
+ 		}
+@@ -882,6 +957,7 @@ int cache_delete(struct mapent_cache *mc
+ 		goto done;
+ 
+ 	if (strcmp(this, me->key) == 0) {
++		struct stack *s = me->stack;
+ 		if (me->multi && !list_empty(&me->multi_list)) {
+ 			ret = CHE_FAIL;
+ 			goto done;
+@@ -896,6 +972,13 @@ int cache_delete(struct mapent_cache *mc
+ 		free(me->key);
+ 		if (me->mapent)
+ 			free(me->mapent);
++		while (s) {
++			struct stack *next = s->next;
++			if (s->mapent)
++				free(s->mapent);
++			free(s);
++			s = next;
++		}
+ 		free(me);
+ 	}
+ done:
+--- autofs-5.0.5.orig/modules/lookup_file.c
++++ autofs-5.0.5/modules/lookup_file.c
+@@ -988,8 +988,10 @@ int lookup_mount(struct autofs_point *ap
+ 				cache_writelock(smc);
+ 				sme = cache_lookup_distinct(smc, key);
+ 				/* Negative timeout expired for non-existent entry. */
+-				if (sme && !sme->mapent)
+-					cache_delete(smc, key);
++				if (sme && !sme->mapent) {
++					if (cache_pop_mapent(sme) == CHE_FAIL)
++						cache_delete(smc, key);
++				}
+ 				cache_unlock(smc);
+ 			}
+ 		}
+--- autofs-5.0.5.orig/modules/lookup_hosts.c
++++ autofs-5.0.5/modules/lookup_hosts.c
+@@ -155,7 +155,9 @@ static int do_parse_mount(struct autofs_
+ 
+ 		cache_writelock(mc);
+ 		me = cache_lookup_distinct(mc, name);
+-		if (!me)
++		if (me)
++			rv = cache_push_mapent(me, NULL);
++		else
+ 			rv = cache_update(mc, source, name, NULL, now);
+ 		if (rv != CHE_FAIL) {
+ 			me = cache_lookup_distinct(mc, name);
+@@ -315,8 +317,10 @@ int lookup_mount(struct autofs_point *ap
+ 				cache_writelock(smc);
+ 				sme = cache_lookup_distinct(smc, name);
+ 				/* Negative timeout expired for non-existent entry. */
+-				if (sme && !sme->mapent)
+-					cache_delete(smc, name);
++				if (sme && !sme->mapent) {
++					if (cache_pop_mapent(sme) == CHE_FAIL)
++						cache_delete(smc, name);
++				}
+ 				cache_unlock(smc);
+ 			}
+ 		}
+--- autofs-5.0.5.orig/modules/lookup_ldap.c
++++ autofs-5.0.5/modules/lookup_ldap.c
+@@ -2983,8 +2983,10 @@ int lookup_mount(struct autofs_point *ap
+ 				cache_writelock(smc);
+ 				sme = cache_lookup_distinct(smc, key);
+ 				/* Negative timeout expired for non-existent entry. */
+-				if (sme && !sme->mapent)
+-					cache_delete(smc, key);
++				if (sme && !sme->mapent) {
++					if (cache_pop_mapent(sme) == CHE_FAIL)
++						cache_delete(smc, key);
++				}
+ 				cache_unlock(smc);
+ 			}
+ 		}
+--- autofs-5.0.5.orig/modules/lookup_nisplus.c
++++ autofs-5.0.5/modules/lookup_nisplus.c
+@@ -509,8 +509,10 @@ int lookup_mount(struct autofs_point *ap
+ 				cache_writelock(smc);
+ 				sme = cache_lookup_distinct(smc, key);
+ 				/* Negative timeout expired for non-existent entry. */
+-				if (sme && !sme->mapent)
+-					cache_delete(smc, key);
++				if (sme && !sme->mapent) {
++					if (cache_pop_mapent(sme) == CHE_FAIL)
++						cache_delete(smc, key);
++				}
+ 				cache_unlock(smc);
+ 			}
+ 		}
+@@ -602,7 +604,9 @@ int lookup_mount(struct autofs_point *ap
+ 			return NSS_STATUS_TRYAGAIN;
+ 		cache_writelock(mc);
+ 		me = cache_lookup_distinct(mc, key);
+-		if (!me)
++		if (me)
++			rv = cache_push_mapent(me, NULL);
++		else
+ 			rv = cache_update(mc, source, key, NULL, now);
+ 		if (rv != CHE_FAIL) {
+ 			me = cache_lookup_distinct(mc, key);
+--- autofs-5.0.5.orig/modules/lookup_program.c
++++ autofs-5.0.5/modules/lookup_program.c
+@@ -156,8 +156,10 @@ int lookup_mount(struct autofs_point *ap
+ 				cache_writelock(smc);
+ 				sme = cache_lookup_distinct(smc, name);
+ 				/* Negative timeout expired for non-existent entry. */
+-				if (sme && !sme->mapent)
+-					cache_delete(smc, name);
++				if (sme && !sme->mapent) {
++					if (cache_pop_mapent(sme) == CHE_FAIL)
++						cache_delete(smc, name);
++				}
+ 				cache_unlock(smc);
+ 			}
+ 		}
+@@ -451,7 +453,9 @@ out_free:
+ 
+ 		cache_writelock(mc);
+ 		me = cache_lookup_distinct(mc, name);
+-		if (!me)
++		if (me)
++			rv = cache_push_mapent(me, NULL);
++		else
+ 			rv = cache_update(mc, source, name, NULL, now);
+ 		if (rv != CHE_FAIL) {
+ 			me = cache_lookup_distinct(mc, name);
+--- autofs-5.0.5.orig/modules/lookup_sss.c
++++ autofs-5.0.5/modules/lookup_sss.c
+@@ -597,8 +597,10 @@ int lookup_mount(struct autofs_point *ap
+ 				cache_writelock(smc);
+ 				sme = cache_lookup_distinct(smc, key);
+ 				/* Negative timeout expired for non-existent entry. */
+-				if (sme && !sme->mapent)
+-					cache_delete(smc, key);
++				if (sme && !sme->mapent) {
++					if (cache_pop_mapent(sme) == CHE_FAIL)
++						cache_delete(smc, key);
++				}
+ 				cache_unlock(smc);
+ 			}
+ 		}
+--- autofs-5.0.5.orig/modules/lookup_yp.c
++++ autofs-5.0.5/modules/lookup_yp.c
+@@ -613,8 +613,10 @@ int lookup_mount(struct autofs_point *ap
+ 				cache_writelock(smc);
+ 				sme = cache_lookup_distinct(smc, key);
+ 				/* Negative timeout expired for non-existent entry. */
+-				if (sme && !sme->mapent)
+-					cache_delete(smc, key);
++				if (sme && !sme->mapent) {
++					if (cache_pop_mapent(sme) == CHE_FAIL)
++						cache_delete(smc, key);
++				}
+ 				cache_unlock(smc);
+ 			}
+ 		}

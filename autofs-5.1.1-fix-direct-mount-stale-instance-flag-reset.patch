@@ -1,0 +1,34 @@
+autofs-5.1.1 - fix direct mount stale instance flag reset
+
+From: Ian Kent <raven@themaw.net>
+
+When re-reading a direct map the stale map instance flag was not being
+reset. This caused the map to be seen as stale on subsequent lookups
+thereby triggering a map re-read.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG      |    1 +
+ daemon/state.c |    1 +
+ 2 files changed, 2 insertions(+)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -268,6 +268,7 @@
+ - fix config old name lookup.
+ - fix error handling on ldap bind fail.
+ - fix gcc5 complaints.
++- fix direct mount stale instance flag reset.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/daemon/state.c
++++ autofs-5.0.5/daemon/state.c
+@@ -511,6 +511,7 @@ static void *do_readmap(void *arg)
+ 			}
+ 			lookup_prune_one_cache(ap, map->mc, now);
+ 			pthread_cleanup_pop(1);
++			clear_stale_instances(map);
+ 			map->stale = 0;
+ 			map = map->next;
+ 		}

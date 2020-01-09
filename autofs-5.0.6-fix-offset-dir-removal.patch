@@ -1,0 +1,99 @@
+autofs-5.0.6 - fix offset dir removal
+
+From: Ian Kent <ikent@redhat.com>
+
+When removing autofs multi-mount directories (which usually means the
+top level tree where no mount is present at the base) at expire we
+need to take care not to remove the top directory of the tree if the
+origin map is an indirect mount that has the browse option set.
+---
+
+ CHANGELOG    |    1 +
+ lib/mounts.c |   43 +++++++++++++++++++++++++++++++++++++++++--
+ 2 files changed, 42 insertions(+), 2 deletions(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -112,6 +112,7 @@
+ - fix remount of multi mount.
+ - fix devce ioctl alloc path check.
+ - add hup signal handling to hosts map.
++- fix offset directory removal.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/mounts.c
++++ autofs-5.0.5/lib/mounts.c
+@@ -1654,6 +1654,41 @@ cont:
+ 	return mounted;
+ }
+ 
++static int rmdir_path_offset(struct autofs_point *ap, struct mapent *oe)
++{
++	char *dir, *path;
++	unsigned int split;
++	int ret;
++
++	if (ap->type == LKP_DIRECT)
++		return rmdir_path(ap, oe->key, oe->multi->dev);
++
++	dir = strdup(oe->key);
++
++	if (ap->flags & MOUNT_FLAG_GHOST)
++		split = strlen(ap->path) + strlen(oe->multi->key) + 1;
++	else
++		split = strlen(ap->path);
++
++	dir[split] = '\0';
++	path = &dir[split + 1];
++
++	if (chdir(dir) == -1) {
++		error(ap->logopt, "failed to chdir to %s", dir);
++		free(dir);
++		return -1;
++	}
++
++	ret = rmdir_path(ap, path, ap->dev);
++
++	free(dir);
++
++	if (chdir("/") == -1)
++		error(ap->logopt, "failed to chdir to /");
++
++	return ret;
++}
++
+ int umount_multi_triggers(struct autofs_point *ap, struct mapent *me, char *root, const char *base)
+ {
+ 	char path[PATH_MAX + 1];
+@@ -1715,11 +1750,13 @@ int umount_multi_triggers(struct autofs_
+ 			 * ok so only try and remount the offset if the
+ 			 * actual mount point still exists.
+ 			 */
+-			ret = rmdir_path(ap, oe->key, ap->dev);
++			ret = rmdir_path_offset(ap, oe);
+ 			if (ret == -1 && !stat(oe->key, &st)) {
+ 				ret = do_mount_autofs_offset(ap, oe, root, offset);
+ 				if (ret)
+ 					left++;
++				/* But we did origianlly create this */
++				oe->flags |= MOUNT_FLAG_DIR_CREATED;
+ 			}
+ 		}
+ 	}
+@@ -1881,11 +1918,13 @@ int clean_stale_multi_triggers(struct au
+ 			 * ok so only try and remount the offset if the
+ 			 * actual mount point still exists.
+ 			 */
+-			ret = rmdir_path(ap, oe->key, ap->dev);
++			ret = rmdir_path_offset(ap, oe);
+ 			if (ret == -1 && !stat(oe->key, &st)) {
+ 				ret = do_mount_autofs_offset(ap, oe, root, offset);
+ 				if (ret) {
+ 					left++;
++					/* But we did origianlly create this */
++					oe->flags |= MOUNT_FLAG_DIR_CREATED;
+ 					free(key);
+ 					continue;
+ 				}

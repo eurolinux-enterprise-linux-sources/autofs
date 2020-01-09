@@ -1,0 +1,52 @@
+autofs-5.0.6 - Fix LDAP result leaks on error paths
+
+From: Leonardo Chiquitto <leonardo.lists@gmail.com>
+
+According to ldap_search_s(3), the result structure must be freed
+with ldap_msgfree() even when the search function returned failure.
+---
+
+ CHANGELOG             |    1 +
+ modules/lookup_ldap.c |    6 ++++++
+ 2 files changed, 7 insertions(+)
+
+
+--- autofs-5.0.5.orig/modules/lookup_ldap.c
++++ autofs-5.0.5/modules/lookup_ldap.c
+@@ -384,6 +384,8 @@ static int get_query_dn(unsigned logopt,
+ 			error(logopt,
+ 			      MODPREFIX "query failed for %s: %s",
+ 			      query, ldap_err2string(rv));
++			if (result)
++				ldap_msgfree(result);
+ 			free(query);
+ 			return 0;
+ 		}
+@@ -1612,6 +1614,8 @@ int lookup_read_master(struct master *ma
+ 		error(logopt, MODPREFIX "query failed for %s: %s",
+ 		      query, ldap_err2string(rv));
+ 		unbind_ldap_connection(logging, ldap, ctxt);
++		if (result)
++			ldap_msgfree(result);
+ 		free(query);
+ 		return NSS_STATUS_NOTFOUND;
+ 	}
+@@ -2622,6 +2626,8 @@ static int lookup_one(struct autofs_poin
+ 	if ((rv != LDAP_SUCCESS) || !result) {
+ 		crit(ap->logopt, MODPREFIX "query failed for %s", query);
+ 		unbind_ldap_connection(ap->logopt, ldap, ctxt);
++		if (result)
++			ldap_msgfree(result);
+ 		free(query);
+ 		return CHE_FAIL;
+ 	}
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -165,6 +165,7 @@
+ - fix cache readlock not taken on lookup.
+ - lib/defaults.c: use WITH_LDAP conditional around LDAP types.
+ - fix master map source server unavailable handling.
++- fix LDAP result leaks on error paths.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------

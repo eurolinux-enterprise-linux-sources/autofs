@@ -1,0 +1,65 @@
+autofs-5.0.6 - dont retry ldap connect if not required
+
+From: Ian Kent <ikent@redhat.com>
+
+When using LDAP and the server is not available autofs retries the
+connection when  it fails in case the SASL credentail has expired.
+But this is done even when not using SASL, so change it check if
+SASL authentication is required.
+---
+
+ CHANGELOG             |    1 +
+ include/lookup_ldap.h |    1 +
+ modules/lookup_ldap.c |    6 +++---
+ 3 files changed, 5 insertions(+), 3 deletions(-)
+
+
+--- autofs-5.0.5.orig/include/lookup_ldap.h
++++ autofs-5.0.5/include/lookup_ldap.h
+@@ -103,6 +103,7 @@ struct lookup_context {
+ #define LDAP_AUTH_NOTREQUIRED	0x0001
+ #define LDAP_AUTH_REQUIRED	0x0002
+ #define LDAP_AUTH_AUTODETECT	0x0004
++#define LDAP_NEED_AUTH		(LDAP_AUTH_REQUIRED|LDAP_AUTH_AUTODETECT)
+ #endif
+ 
+ #define LDAP_AUTH_USESIMPLE	0x0008
+--- autofs-5.0.5.orig/modules/lookup_ldap.c
++++ autofs-5.0.5/modules/lookup_ldap.c
+@@ -558,7 +558,7 @@ static int do_bind(unsigned logopt, LDAP
+ 	debug(logopt, MODPREFIX "auth_required: %d, sasl_mech %s",
+ 	      ctxt->auth_required, ctxt->sasl_mech);
+ 
+-	if (ctxt->auth_required & (LDAP_AUTH_REQUIRED|LDAP_AUTH_AUTODETECT)) {
++	if (ctxt->auth_required & LDAP_NEED_AUTH) {
+ 		rv = autofs_sasl_bind(logopt, ldap, ctxt);
+ 		debug(logopt, MODPREFIX "autofs_sasl_bind returned %d", rv);
+ 	} else {
+@@ -778,7 +778,7 @@ static LDAP *do_reconnect(unsigned logop
+ 		ldap = do_connect(logopt, ctxt->server, ctxt);
+ #ifdef WITH_SASL
+ 		/* Dispose of the sasl authentication connection and try again. */
+-		if (!ldap) {
++		if (!ldap && ctxt->auth_required & LDAP_NEED_AUTH) {
+ 			autofs_sasl_dispose(ctxt);
+ 			ldap = connect_to_server(logopt, ctxt->server, ctxt);
+ 		}
+@@ -814,7 +814,7 @@ static LDAP *do_reconnect(unsigned logop
+ 	 * Dispose of the sasl authentication connection and try the
+ 	 * current server again before trying other servers in the list.
+ 	 */
+-	if (!ldap) {
++	if (!ldap && ctxt->auth_required & LDAP_NEED_AUTH) {
+ 		autofs_sasl_dispose(ctxt);
+ 		ldap = connect_to_server(logopt, ctxt->uri->uri, ctxt);
+ 	}
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -167,6 +167,7 @@
+ - fix master map source server unavailable handling.
+ - fix LDAP result leaks on error paths.
+ - fix fix LDAP result leaks on error paths.
++- dont retry ldap connect if not required.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------

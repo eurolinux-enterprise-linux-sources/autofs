@@ -1,0 +1,35 @@
+Fix deadlock in init_ldap_connection()
+
+From: Leonardo Chiquitto <leonardo.lists@gmail.com>
+
+Commit 9fc20db13 ("fix crash due to thread unsafe use of libldap")
+introduced a deadlock in init_ldap_connection(). When TLS is on,
+this function will call itself recursively and try to lock a mutex
+that's already owned by the thread. Fix the problem by using the
+lockless version.
+---
+ CHANGELOG             |    1 +
+ modules/lookup_ldap.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -146,6 +146,7 @@
+ - fix fix options compare.
+ - fix negative status being reset on map read.
+ - fix ipv6 link local address handling.
++- fix deadlock in init_ldap_connection.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/lookup_ldap.c
++++ autofs-5.0.5/modules/lookup_ldap.c
+@@ -286,7 +286,7 @@ LDAP *__init_ldap_connection(unsigned lo
+ 				return NULL;
+ 			}
+ 			ctxt->use_tls = LDAP_TLS_DONT_USE;
+-			ldap = init_ldap_connection(logopt, uri, ctxt);
++			ldap = __init_ldap_connection(logopt, uri, ctxt);
+ 			if (ldap)
+ 				ctxt->use_tls = LDAP_TLS_INIT;
+ 			return ldap;

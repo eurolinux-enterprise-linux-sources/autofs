@@ -1,0 +1,81 @@
+autofs-5.0.5 - fix mountd vers retry
+
+From: Ian Kent <raven@themaw.net>
+
+The autofs RPC function used to get the exports list from a host to
+be used by the hosts internal map did not try all potentially available
+mountd versions. This leads to a failure to get the export list when
+certain mountd protocol versions are disabled.
+---
+
+ CHANGELOG      |    1 +
+ lib/rpc_subs.c |   26 +++++++++++++++++++++-----
+ 2 files changed, 22 insertions(+), 5 deletions(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -99,6 +99,7 @@
+ - update ->timeout() function to not return timeout.
+ - move timeout to map_source (allow per direct map timeout).
+ - report map not read when debug logging.
++- fix mountd vers retry.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/rpc_subs.c
++++ autofs-5.0.5/lib/rpc_subs.c
+@@ -53,6 +53,12 @@
+ /* Get numeric value of the n bits starting at position p */
+ #define getbits(x, p, n)      ((x >> (p + 1 - n)) & ~(~0 << n))
+ 
++static const rpcvers_t mount_vers[] = {
++        MOUNTVERS_NFSV3,
++        MOUNTVERS_POSIX,
++        MOUNTVERS,
++};
++
+ static int connect_nb(int, struct sockaddr *, socklen_t, struct timeval *);
+ inline void dump_core(void);
+ 
+@@ -772,6 +778,7 @@ static int rpc_get_exports_proto(struct
+ 	enum clnt_stat status;
+ 	int proto = info->proto->p_proto;
+ 	unsigned int option = info->close_option;
++	int vers_entry;
+ 	int ret;
+ 
+ 	if (info->proto->p_proto == IPPROTO_UDP) {
+@@ -787,10 +794,19 @@ static int rpc_get_exports_proto(struct
+ 
+ 	client->cl_auth = authunix_create_default();
+ 
+-	status = clnt_call(client, MOUNTPROC_EXPORT,
+-			 (xdrproc_t) xdr_void, NULL,
+-			 (xdrproc_t) xdr_exports, (caddr_t) exp,
+-			 info->timeout);
++	vers_entry = 0;
++	while (1) {
++		status = clnt_call(client, MOUNTPROC_EXPORT,
++				 (xdrproc_t) xdr_void, NULL,
++				 (xdrproc_t) xdr_exports, (caddr_t) exp,
++				 info->timeout);
++		if (status != RPC_PROGVERSMISMATCH)
++			break;
++		if (++vers_entry > 2)
++			break;
++		CLNT_CONTROL(client, CLSET_VERS,
++			    (void *) &mount_vers[vers_entry]);
++	}
+ 
+ 	/* Only play with the close options if we think it completed OK */
+ 	if (proto == IPPROTO_TCP && status == RPC_SUCCESS) {
+@@ -859,7 +875,7 @@ exports rpc_get_exports(const char *host
+ 	info.addr = NULL;
+ 	info.addr_len = 0;
+ 	info.program = MOUNTPROG;
+-	info.version = MOUNTVERS;
++	info.version = mount_vers[0];
+ 	info.send_sz = 0;
+ 	info.recv_sz = 0;
+ 	info.timeout.tv_sec = seconds;

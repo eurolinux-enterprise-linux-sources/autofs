@@ -1,0 +1,48 @@
+autofs-5.1.1 - fix direct map expire not set for initail empty map
+
+From: Ian Kent <raven@themaw.net>
+
+If an empty direct map is present at startup the expire alarm can't be
+set because the expire run frequency isn't known. But if the map is
+re-read and is no longer empty the expire alarm wasn't being set.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG      |    1 +
+ daemon/state.c |    8 ++++++++
+ 2 files changed, 9 insertions(+)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -282,6 +282,7 @@
+ - remove unused offset handling code.
+ - fix mount as you go offset selection.
+ - guard against incorrect umount return.
++- fix direct map expire not set for initail empty map.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/daemon/state.c
++++ autofs-5.0.5/daemon/state.c
+@@ -356,6 +356,7 @@ static void do_readmap_mount(struct auto
+ {
+ 	struct mapent_cache *nc;
+ 	struct mapent *ne, *nested, *valid;
++	time_t exp_runfreq = ap->exp_runfreq;
+ 
+ 	nc = ap->entry->master->nc;
+ 
+@@ -432,6 +433,13 @@ static void do_readmap_mount(struct auto
+ 	} else
+ 		do_mount_autofs_direct(ap, mnts, me, map->exp_timeout);
+ 
++	/* If the direct mount map was empty at startup no expire
++	 * alarm will have been added. So add it here if there are
++	 * now map entries.
++	 */
++	if (!exp_runfreq && ap->exp_runfreq)
++		alarm_add(ap, ap->exp_runfreq + rand() % ap->exp_runfreq);
++
+ 	return;
+ }
+ 

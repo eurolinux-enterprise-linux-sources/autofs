@@ -1,0 +1,36 @@
+autofs-5.1.1 - fix memory leak in nisplus lookup_reinit()
+
+From: Ian Kent <raven@themaw.net>
+
+Don't forget to free context on reinit error.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG                |    1 +
+ modules/lookup_nisplus.c |    4 +++-
+ 2 files changed, 4 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -283,6 +283,7 @@
+ - fix mount as you go offset selection.
+ - guard against incorrect umount return.
+ - fix direct map expire not set for initail empty map.
++- fix memory leak in nisplus lookup_reinit().
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/lookup_nisplus.c
++++ autofs-5.0.5/modules/lookup_nisplus.c
+@@ -116,8 +116,10 @@ int lookup_reinit(const char *mapfmt,
+ 
+ 	new->parse = ctxt->parse;
+ 	ret = do_init(mapfmt, argc, argv, new, 1);
+-	if (ret)
++	if (ret) {
++		free(new);
+ 		return 1;
++	}
+ 
+ 	*context = new;
+ 

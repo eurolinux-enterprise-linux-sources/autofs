@@ -1,0 +1,39 @@
+autofs-5.0.6 - fix fix wait for master source mutex
+
+From: Ian Kent <raven@themaw.net>
+
+The "wait for master source mutex" change wait for a busy read/write
+mutex to become available instead of failing. The s390x architecture
+is slower than the Intel architectures and the time allowed to wait
+can be too short leading to a failure anyway.
+
+This patch increases the maximum wait from 1 second to 5 seconds to
+avoid false positive fails.
+---
+
+ CHANGELOG    |    1 +
+ lib/master.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -81,6 +81,7 @@
+ - ignore duplicate exports in auto.net.
+ - fix submount shutdown race.
+ - fix wait for master source mutex.
++- fix fix wait for master source mutex.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/master.c
++++ autofs-5.0.5/lib/master.c
+@@ -548,7 +548,7 @@ void master_source_writelock(struct mast
+ 
+ void master_source_readlock(struct master_mapent *entry)
+ {
+-	int retries = 5; /* 1 second maximum */
++	int retries = 25; /* 5 second maximum */
+ 	int status;
+ 
+ 	while (retries--) {

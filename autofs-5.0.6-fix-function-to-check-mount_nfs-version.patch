@@ -1,0 +1,52 @@
+autofs-5.0.6 - fix function to check mount.nfs version
+
+From: Leonardo Chiquitto <leonardo.lists@gmail.com>
+
+The function check_nfs_mount_version() compares the version
+of mount.nfs to decide whether a feature is available or not.
+
+There's a bug in the version comparison code that causes
+1.3.0 to be considered less than 1.1.1. This patch fixes it.
+---
+
+ CHANGELOG    |    1 +
+ lib/mounts.c |   17 +++++------------
+ 2 files changed, 6 insertions(+), 12 deletions(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -87,6 +87,7 @@
+ - reinstate singleton mount probe.
+ - rework error return handling in rpc code.
+ - catch EHOSTUNREACH and bail out early.
++- fix function to check mount.nfs version.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/mounts.c
++++ autofs-5.0.5/lib/mounts.c
+@@ -249,18 +249,11 @@ int check_nfs_mount_version(struct nfs_m
+ 	}
+ 
+ 	if (ret) {
+-		if (vers->major == check->major &&
+-		    vers->minor == check->minor &&
+-		    vers->fix == check->fix)
+-			;
+-		else {
+-			if (vers->major < check->major)
+-				ret = 0;
+-			else if (vers->minor < check->minor)
+-				ret = 0;
+-			else if (vers->fix < check->fix)
+-				ret = 0;
+-		}
++		if ((vers->major < check->major) ||
++		    ((vers->major == check->major) && (vers->minor < check->minor)) ||
++		    ((vers->major == check->major) && (vers->minor == check->minor) &&
++		     (vers->fix < check->fix)))
++			ret = 0;
+ 	}
+ 
+ 	if (waitpid(f, &status, 0) != f) ;

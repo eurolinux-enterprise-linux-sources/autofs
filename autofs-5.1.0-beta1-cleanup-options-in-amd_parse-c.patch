@@ -1,0 +1,50 @@
+autofs-5.1.0-beta1 - cleanup options in amd_parse.c
+
+From: Ian Kent <raven@themaw.net>
+
+Remove useless duplicated memset() calls from mount options handling
+in the amd parser.
+---
+ CHANGELOG           |    1 +
+ modules/amd_parse.y |   13 +++++--------
+ 2 files changed, 6 insertions(+), 8 deletions(-)
+
+diff --git a/CHANGELOG b/CHANGELOG
+index bb98e95..7c71501 100644
+--- a/CHANGELOG
++++ b/CHANGELOG
+@@ -216,6 +216,7 @@
+ - fix hash on confg option add and delete.
+ - add plus to path match pattern.
+ - fix multi entry ldap option handling.
++- cleanup options in amd_parse.c
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+diff --git a/modules/amd_parse.y b/modules/amd_parse.y
+index 8174fb2..17780f6 100644
+--- a/modules/amd_parse.y
++++ b/modules/amd_parse.y
+@@ -360,17 +360,14 @@ option_assignment: MAP_OPTION OPTION_ASSIGN FS_TYPE
+ 	}
+ 	| MNT_OPTION OPTION_ASSIGN options
+ 	{
+-		if (!strcmp($1, "opts")) {
++		memset(opts, 0, sizeof(opts));
++		if (!strcmp($1, "opts"))
+ 			entry.opts = amd_strdup(opts);
+-			memset(opts, 0, sizeof(opts));
+-		} else if (!strcmp($1, "addopts")) {
++		else if (!strcmp($1, "addopts"))
+ 			entry.addopts = amd_strdup(opts);
+-			memset(opts, 0, sizeof(opts));
+-		} else if (!strcmp($1, "remopts")) {
++		else if (!strcmp($1, "remopts"))
+ 			entry.remopts = amd_strdup(opts);
+-			memset(opts, 0, sizeof(opts));
+-		} else {
+-			memset(opts, 0, sizeof(opts));
++		else {
+ 			amd_notify($1);
+ 			YYABORT;
+ 		}

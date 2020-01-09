@@ -1,0 +1,20 @@
+autofs-5.0.7 - fix incorrect var name in test
+
+From: Ian Kent <raven@themaw.net>
+
+Fix incorrect variable name used for test of buffer size for getgrgid_r.
+---
+ lib/mounts.c |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/lib/mounts.c
++++ autofs-5.0.5/lib/mounts.c
+@@ -1276,7 +1276,7 @@ void set_tsd_user_vars(unsigned int logo
+ 	/* Try to get group info */
+ 
+ 	grplen = sysconf(_SC_GETGR_R_SIZE_MAX);
+-	if (tmplen < 0) {
++	if (grplen < 0) {
+ 		error(logopt, "failed to get buffer size for getgrgid_r");
+ 		goto free_tsv_home;
+ 	}

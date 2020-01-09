@@ -1,0 +1,81 @@
+autofs-5.1.0-beta1 - allow empty value in macro selectors
+
+From: Ian Kent <raven@themaw.net>
+
+Some map selectors (this case is olny considering macro selectors) may
+be given the comparison value left blank, possibly with the intent the
+selector will not match so a mount will not be attempted, such as when
+the delay option is also given.
+
+autofs doesn't implement the delay option but it shouldn't fail to parse
+these locations so that a valid locations in the list can be tried.
+---
+ CHANGELOG           |    1 +
+ modules/amd_parse.y |   14 ++++++++++++++
+ modules/parse_amd.c |    9 +++++++--
+ 3 files changed, 22 insertions(+), 2 deletions(-)
+
+diff --git a/CHANGELOG b/CHANGELOG
+index caaaf61..0eef3d4 100644
+--- a/CHANGELOG
++++ b/CHANGELOG
+@@ -218,6 +218,7 @@
+ - fix multi entry ldap option handling.
+ - cleanup options in amd_parse.c
+ - allow empty value for some map options.
++- allow empty value in macro selectors.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+diff --git a/modules/amd_parse.y b/modules/amd_parse.y
+index 7a779e7..f65ab7a 100644
+--- a/modules/amd_parse.y
++++ b/modules/amd_parse.y
+@@ -200,6 +200,13 @@ selection: SELECTOR IS_EQUAL SELECTOR_VALUE
+ 			YYABORT;
+ 		}
+ 	}
++	| SELECTOR IS_EQUAL
++	{
++		if (!make_selector($1, "", NULL, SEL_COMP_EQUAL)) {
++			amd_notify($1);
++			YYABORT;
++		}
++	}
+ 	| SELECTOR NOT_EQUAL SELECTOR_VALUE
+ 	{
+ 		if (!make_selector($1, $3, NULL, SEL_COMP_NOTEQUAL)) {
+@@ -207,6 +214,13 @@ selection: SELECTOR IS_EQUAL SELECTOR_VALUE
+ 			YYABORT;
+ 		}
+ 	}
++	| SELECTOR NOT_EQUAL
++	{
++		if (!make_selector($1, "", NULL, SEL_COMP_EQUAL)) {
++			amd_notify($1);
++			YYABORT;
++		}
++	}
+ 	| SELECTOR LBRACKET SEL_ARG_VALUE RBRACKET
+ 	{
+ 		if (!make_selector($1, $3, NULL, SEL_COMP_NONE)) {
+diff --git a/modules/parse_amd.c b/modules/parse_amd.c
+index bf36200..26d01ed 100644
+--- a/modules/parse_amd.c
++++ b/modules/parse_amd.c
+@@ -350,8 +350,13 @@ static int eval_selector(unsigned int logopt,
+ 			break;
+ 
+ 		case SEL_FLAG_NUM:
+-			res = atoi(v->val);
+-			val = atoi(s->comp.value);
++			if (!*s->comp.value) {
++				res = 1;
++				val = 0;
++			} else {
++				res = atoi(v->val);
++				val = atoi(s->comp.value);
++			}
+ 			if (s->compare & SEL_COMP_EQUAL && res == val) {
+ 				debug(logopt, MODPREFIX
+ 				      "matched selector %s(%s) equal to %s",

@@ -1,0 +1,38 @@
+autofs-5.0.8 - fix cache readlock not taken on lookup
+
+From: Ian Kent <raven@themaw.net>
+
+In modules/lookup_yp.c:check_map_indirect() there's a missing cache
+readlock.
+---
+ CHANGELOG           |    1 +
+ modules/lookup_yp.c |    6 +++++-
+ 2 files changed, 6 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -162,6 +162,7 @@
+ - add short host name standard marco variable.
+ - add std vars to program map invocation.
+ - check for existing offset mount before mounting.
++- fix cache readlock not taken on lookup.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/lookup_yp.c
++++ autofs-5.0.5/modules/lookup_yp.c
+@@ -517,9 +517,13 @@ static int check_map_indirect(struct aut
+ 		 * If the server is down and the entry exists in the cache
+ 		 * and belongs to this map return success and use the entry.
+ 		 */
++		cache_readlock(mc);
+ 		exists = cache_lookup(mc, key);
+-		if (exists && exists->source == source)
++		if (exists && exists->source == source) {
++			cache_unlock(mc);
+ 			return NSS_STATUS_SUCCESS;
++		}
++		cache_unlock(mc);
+ 
+ 		warn(ap->logopt,
+ 		     MODPREFIX "lookup for %s failed: %s",

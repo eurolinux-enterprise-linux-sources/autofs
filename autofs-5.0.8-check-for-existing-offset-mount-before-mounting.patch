@@ -1,0 +1,46 @@
+autofs-5.0.8 - check for existing offset mount before mounting
+
+From: Ian Kent <raven@themaw.net>
+
+The change that introduced the miscellaneous device for autofs
+mount control removed a mount point mounted check from the
+mount_autofs_offset() function for when the miscellaneous
+device is not used.
+
+But a subsequent change that enabled limited update of the exports
+of a hosts mount needed that check. Without it a second occurance
+of the offset (corresponding to an export) could be mounted upon
+a map re-read.
+---
+ CHANGELOG       |    1 +
+ daemon/direct.c |    3 +--
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -161,6 +161,7 @@
+ - setup program map env from macro table.
+ - add short host name standard marco variable.
+ - add std vars to program map invocation.
++- check for existing offset mount before mounting.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/daemon/direct.c
++++ autofs-5.0.5/daemon/direct.c
+@@ -658,14 +658,13 @@ int mount_autofs_offset(struct autofs_po
+ 		if (!(ret == -1 && errno == ENOENT))
+ 			return MOUNT_OFFSET_FAIL;
+ 	} else {
+-/*
+ 		if (is_mounted(_PROC_MOUNTS, me->key, MNTS_AUTOFS)) {
+ 			if (ap->state != ST_READMAP)
+ 				warn(ap->logopt,
+ 				     "trigger %s already mounted", me->key);
+ 			return MOUNT_OFFSET_OK;
+ 		}
+-*/
++
+ 		if (me->ioctlfd != -1) {
+ 			error(ap->logopt, "active offset mount %s", me->key);
+ 			return MOUNT_OFFSET_FAIL;

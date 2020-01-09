@@ -1,0 +1,47 @@
+autofs-5.0.7 - fix parse buffer initialization
+
+From: Ian Kent <ikent@redhat.com>
+
+When parsing a master map entry, if the mount point path is longer than
+the following map string the lexical analyzer buffer may not have a null
+terminator where it is expected. If the map name string also contains a
+string that is the same as a map type at the end the map name the map
+name is not constructed correctly because of this lack of a string
+terminator in the buffer.
+---
+
+ CHANGELOG        |    1 +
+ lib/master_tok.l |    4 +++-
+ 2 files changed, 4 insertions(+), 1 deletion(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -197,6 +197,7 @@
+ - fix mistake in assignment.
+ - use open(2) instead of access(2) to trigger dependent mounts.
+ - document browse option in man page.
++- fix parse buffer initialization.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/master_tok.l
++++ autofs-5.0.5/lib/master_tok.l
+@@ -74,7 +74,8 @@ int my_yyinput(char *, int);
+ #define unput(c) (*(char *) --line = c)
+ #endif
+ 
+-char buff[1024];
++#define BUFF_LEN	1024
++char buff[BUFF_LEN];
+ char *bptr;
+ char *optr = buff;
+ unsigned int tlen;
+@@ -174,6 +175,7 @@ OPTNTOUT	(-n{OPTWS}|-n{OPTWS}={OPTWS}|--
+ 		*bptr = '\0';
+ 		strcpy(master_lval.strtype, buff);
+ 		bptr = buff;
++		memset(buff, 0, BUFF_LEN);
+ 		return(PATH);
+ 	}
+ 

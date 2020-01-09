@@ -1,0 +1,372 @@
+autofs-5.0.6 - improve UDP RPC timeout handling
+
+From: Ian Kent <ikent@redhat.com>
+
+The RPC code still doesn't control timeout quite right. Change that
+to take control of the UDP timeout too.
+---
+
+ CHANGELOG            |    1 
+ include/rpc_subs.h   |    5 ++
+ lib/rpc_subs.c       |   93 +++++++++++++++++++--------------------------------
+ modules/replicated.c |   36 ++++++++++++-------
+ 4 files changed, 63 insertions(+), 72 deletions(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -90,6 +90,7 @@
+ - fix function to check mount.nfs version.
+ - fix rework error return handling in rpc code.
+ - allow MOUNT_WAIT to override probe.
++- improve UDP RPC timeout handling.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/include/rpc_subs.h
++++ autofs-5.0.5/include/rpc_subs.h
+@@ -42,6 +42,9 @@
+ #define PMAP_TOUT_UDP	3
+ #define PMAP_TOUT_TCP	5
+ 
++#define RPC_TOUT_UDP	PMAP_TOUT_UDP
++#define RPC_TOUT_TCP	PMAP_TOUT_TCP
++
+ #define HOST_ENT_BUF_SIZE       2048
+ 
+ struct conn_info {
+@@ -64,7 +67,7 @@ void rpc_destroy_udp_client(struct conn_
+ int rpc_tcp_getclient(struct conn_info *, unsigned int, unsigned int);
+ void rpc_destroy_tcp_client(struct conn_info *);
+ int rpc_portmap_getclient(struct conn_info *, const char *, struct sockaddr *, size_t, const char *, unsigned int);
+-unsigned short rpc_portmap_getport(struct conn_info *, struct pmap *);
++int rpc_portmap_getport(struct conn_info *, struct pmap *, unsigned short *);
+ int rpc_ping_proto(struct conn_info *);
+ int rpc_ping(const char *, long, long, unsigned int);
+ double elapsed(struct timeval, struct timeval);
+--- autofs-5.0.5.orig/lib/rpc_subs.c
++++ autofs-5.0.5/lib/rpc_subs.c
+@@ -212,43 +212,24 @@ static int rpc_do_create_client(struct s
+ 	return 0;
+ }
+ #else
+-struct netconfig *find_netconf(void *handle, char *family, char *proto)
+-{
+-	struct netconfig *nconf;
+-
+-	while ((nconf = getnetconfig(handle))) {
+-		if ((strcmp(nconf->nc_protofmly, family) == 0) &&
+-		    (strcmp(nconf->nc_proto, proto) == 0))
+-			break;
+-	}
+-
+-	return nconf;
+-}
+-
+ static int rpc_do_create_client(struct sockaddr *addr, struct conn_info *info, int *fd, CLIENT **client)
+ {
+ 	CLIENT *clnt = NULL;
+ 	struct sockaddr_in in4_laddr;
+ 	struct sockaddr_in6 in6_laddr;
+ 	struct sockaddr *laddr = NULL;
+-	struct netconfig *nconf;
+ 	struct netbuf nb_addr;
+ 	int type, proto;
+-	char *nc_family, *nc_proto;
+-	void *handle;
+ 	size_t slen;
+ 	int ret;
+ 
+ 	*client = NULL;
+ 
+ 	proto = info->proto->p_proto;
+-	if (proto == IPPROTO_UDP) {
++	if (proto == IPPROTO_UDP)
+ 		type = SOCK_DGRAM;
+-		nc_proto = NC_UDP;
+-	} else {
++	else
+ 		type = SOCK_STREAM;
+-		nc_proto = NC_TCP;
+-	}
+ 
+ 	/*
+ 	 * bind to any unused port.  If we left this up to the rpc
+@@ -263,7 +244,6 @@ static int rpc_do_create_client(struct s
+ 		laddr = (struct sockaddr *) &in4_laddr;
+ 		in4_raddr->sin_port = htons(info->port);
+ 		slen = sizeof(struct sockaddr_in);
+-		nc_family = NC_INET;
+ 	} else if (addr->sa_family == AF_INET6) {
+ 		struct sockaddr_in6 *in6_raddr = (struct sockaddr_in6 *) addr;
+ 		in6_laddr.sin6_family = AF_INET6;
+@@ -272,20 +252,9 @@ static int rpc_do_create_client(struct s
+ 		laddr = (struct sockaddr *) &in6_laddr;
+ 		in6_raddr->sin6_port = htons(info->port);
+ 		slen = sizeof(struct sockaddr_in6);
+-		nc_family = NC_INET6;
+ 	} else
+ 		return -EINVAL;
+ 
+-	handle = setnetconfig();
+-	if (!handle)
+-		return -EINVAL;
+-
+-	nconf = find_netconf(handle, nc_family, nc_proto);
+-	if (!nconf) {
+-		endnetconfig(handle);
+-		return -EINVAL;
+-	}
+-
+ 	/*
+ 	 * bind to any unused port.  If we left this up to the rpc layer,
+ 	 * it would bind to a reserved port, which has been shown to
+@@ -295,13 +264,11 @@ static int rpc_do_create_client(struct s
+ 		*fd = open_sock(addr->sa_family, type, proto);
+ 		if (*fd < 0) {
+ 			ret = -errno;
+-			endnetconfig(handle);
+ 			return ret;
+ 		}
+ 
+ 		if (bind(*fd, laddr, slen) < 0) {
+ 			ret = -errno;
+-			endnetconfig(handle);
+ 			return ret;
+ 		}
+ 	}
+@@ -309,19 +276,23 @@ static int rpc_do_create_client(struct s
+ 	nb_addr.maxlen = nb_addr.len = slen;
+ 	nb_addr.buf = addr;
+ 
+-	if (info->proto->p_proto == IPPROTO_TCP) {
++	if (info->proto->p_proto == IPPROTO_UDP)
++		clnt = clnt_dg_create(*fd, &nb_addr,
++				      info->program, info->version,
++				      info->send_sz, info->recv_sz);
++	else if (info->proto->p_proto == IPPROTO_TCP) {
+ 		ret = connect_nb(*fd, addr, slen, &info->timeout);
+-		if (ret < 0) {
+-			endnetconfig(handle);
++		if (ret < 0)
+ 			return ret;
+-		}
+-	}
+-
+-	clnt = clnt_tli_create(*fd, nconf, &nb_addr,
+-				info->program, info->version,
+-				info->send_sz, info->recv_sz);
++		clnt = clnt_vc_create(*fd, &nb_addr,
++				      info->program, info->version,
++				      info->send_sz, info->recv_sz);
++	} else
++		return -EINVAL;
+ 
+-	endnetconfig(handle);
++	/* Our timeout is in seconds */
++	if (clnt && info->timeout.tv_sec)
++		clnt_control(clnt, CLSET_TIMEOUT, (void *) &info->timeout);
+ 
+ 	*client = clnt;
+ 
+@@ -435,6 +406,8 @@ int rpc_udp_getclient(struct conn_info *
+ 			return -ENOENT;
+ 
+ 		info->proto = pe_proto;
++		info->timeout.tv_sec = RPC_TOUT_UDP;
++		info->timeout.tv_usec = 0;
+ 		info->send_sz = UDPMSGSIZE;
+ 		info->recv_sz = UDPMSGSIZE;
+ 	}
+@@ -474,6 +447,8 @@ int rpc_tcp_getclient(struct conn_info *
+ 			return -ENOENT;
+ 
+ 		info->proto = pe_proto;
++		info->timeout.tv_sec = RPC_TOUT_TCP;
++		info->timeout.tv_usec = 0;
+ 		info->send_sz = 0;
+ 		info->recv_sz = 0;
+ 	}
+@@ -553,10 +528,10 @@ int rpc_portmap_getclient(struct conn_in
+ 	return 0;
+ }
+ 
+-unsigned short rpc_portmap_getport(struct conn_info *info, struct pmap *parms)
++int rpc_portmap_getport(struct conn_info *info,
++			struct pmap *parms, unsigned short *port)
+ {
+ 	struct conn_info pmap_info;
+-	unsigned short port = 0;
+ 	CLIENT *client;
+ 	enum clnt_stat status;
+ 	int proto = info->proto->p_proto;
+@@ -598,7 +573,7 @@ unsigned short rpc_portmap_getport(struc
+ 	if (status == RPC_SUCCESS) {
+ 		status = clnt_call(client, PMAPPROC_GETPORT,
+ 				 (xdrproc_t) xdr_pmap, (caddr_t) parms,
+-				 (xdrproc_t) xdr_u_short, (caddr_t) &port,
++				 (xdrproc_t) xdr_u_short, (caddr_t) port,
+ 				 pmap_info.timeout);
+ 	}
+ 
+@@ -625,10 +600,12 @@ unsigned short rpc_portmap_getport(struc
+ 		clnt_destroy(client);
+ 	}
+ 
+-	if (status != RPC_SUCCESS)
++	if (status == RPC_TIMEDOUT)
++		return -ETIMEDOUT;
++	else if (status != RPC_SUCCESS)
+ 		return -EIO;
+ 
+-	return port;
++	return 0;
+ }
+ 
+ int rpc_ping_proto(struct conn_info *info)
+@@ -680,7 +657,9 @@ int rpc_ping_proto(struct conn_info *inf
+ 		clnt_destroy(client);
+ 	}
+ 
+-	if (status != RPC_SUCCESS)
++	if (status == RPC_TIMEDOUT)
++		return -ETIMEDOUT;
++	else if (status != RPC_SUCCESS)
+ 		return -EIO;
+ 
+ 	return 1;
+@@ -719,8 +698,8 @@ static unsigned int __rpc_ping(const cha
+ 	parms.pm_prot = info.proto->p_proto;
+ 	parms.pm_port = 0;
+ 
+-	info.port = rpc_portmap_getport(&info, &parms);
+-	if (info.port < 0)
++	status = rpc_portmap_getport(&info, &parms, &info.port);
++	if (status < 0)
+ 		return status;
+ 
+ 	status = rpc_ping_proto(&info);
+@@ -899,8 +878,8 @@ exports rpc_get_exports(const char *host
+ 
+ 	parms.pm_prot = info.proto->p_proto;
+ 
+-	info.port = rpc_portmap_getport(&info, &parms);
+-	if (info.port < 0)
++	status = rpc_portmap_getport(&info, &parms, &info.port);
++	if (status < 0)
+ 		goto try_tcp;
+ 
+ 	memset(&exportlist, '\0', sizeof(exportlist));
+@@ -916,8 +895,8 @@ try_tcp:
+ 
+ 	parms.pm_prot = info.proto->p_proto;
+ 
+-	info.port = rpc_portmap_getport(&info, &parms);
+-	if (info.port < 0)
++	status = rpc_portmap_getport(&info, &parms, &info.port);
++	if (status < 0)
+ 		return NULL;
+ 
+ 	memset(&exportlist, '\0', sizeof(exportlist));
+--- autofs-5.0.5.orig/modules/replicated.c
++++ autofs-5.0.5/modules/replicated.c
+@@ -569,7 +569,9 @@ static unsigned int get_nfs_info(unsigne
+ 		gettimeofday(&start, &tz);
+ 		status = rpc_ping_proto(rpc_info);
+ 		gettimeofday(&end, &tz);
+-		if (status > 0) {
++		if (status == -ETIMEDOUT)
++			return (unsigned int) status;
++		else if (status > 0) {
+ 			double reply;
+ 			if (random_selection) {
+ 				/* Random value between 0 and 1 */
+@@ -607,13 +609,12 @@ v3_ver:
+ 	} else {
+ 		parms.pm_prot = rpc_info->proto->p_proto;
+ 		parms.pm_vers = NFS3_VERSION;
+-		status = rpc_portmap_getport(pm_info, &parms);
+-		if (status == -EHOSTUNREACH) {
++		status = rpc_portmap_getport(pm_info, &parms, &rpc_info->port);
++		if (status == -EHOSTUNREACH || status == -ETIMEDOUT) {
+ 			supported = status;
+ 			goto done_ver;
+ 		} else if (status < 0)
+ 			goto v2_ver;
+-		rpc_info->port = status;
+ 	}
+ 
+ 	if (rpc_info->proto->p_proto == IPPROTO_UDP)
+@@ -627,7 +628,10 @@ v3_ver:
+ 		gettimeofday(&start, &tz);
+ 		status = rpc_ping_proto(rpc_info);
+ 		gettimeofday(&end, &tz);
+-		if (status > 0) {
++		if (status == -ETIMEDOUT) {
++			supported = status;
++			goto done_ver;
++		} else if (status > 0) {
+ 			double reply;
+ 			if (random_selection) {
+ 				/* Random value between 0 and 1 */
+@@ -654,14 +658,12 @@ v2_ver:
+ 	} else {
+ 		parms.pm_prot = rpc_info->proto->p_proto;
+ 		parms.pm_vers = NFS2_VERSION;
+-		rpc_info->port = rpc_portmap_getport(pm_info, &parms);
+-		status = rpc_portmap_getport(pm_info, &parms);
+-		if (status == -EHOSTUNREACH) {
++		status = rpc_portmap_getport(pm_info, &parms, &rpc_info->port);
++		if (status == -EHOSTUNREACH || status == -ETIMEDOUT) {
+ 			supported = status;
+ 			goto done_ver;
+ 		} else if (status < 0)
+ 			goto done_ver;
+-		rpc_info->port = status;
+ 	}
+ 
+ 	if (rpc_info->proto->p_proto == IPPROTO_UDP)
+@@ -675,7 +677,9 @@ v2_ver:
+ 		gettimeofday(&start, &tz);
+ 		status = rpc_ping_proto(rpc_info);
+ 		gettimeofday(&end, &tz);
+-		if (status > 0) {
++		if (status == -ETIMEDOUT)
++			supported = status;
++		else if (status > 0) {
+ 			double reply;
+ 			if (random_selection) {
+ 				/* Random value between 0 and 1 */
+@@ -752,7 +756,8 @@ static int get_vers_and_cost(unsigned lo
+ 		supported = get_nfs_info(logopt, host,
+ 				   &pm_info, &rpc_info, "tcp", vers, options);
+ 		if (IS_ERR(supported)) {
+-			if (ERR(supported) == EHOSTUNREACH)
++			if (ERR(supported) == EHOSTUNREACH ||
++			    ERR(supported) == ETIMEDOUT)
+ 				return ret;
+ 		} else if (supported) {
+ 			ret = 1;
+@@ -763,7 +768,10 @@ static int get_vers_and_cost(unsigned lo
+ 	if (version & UDP_REQUESTED) {
+ 		supported = get_nfs_info(logopt, host,
+ 				   &pm_info, &rpc_info, "udp", vers, options);
+-		if (supported) {
++		if (IS_ERR(supported)) {
++			if (ERR(supported) == ETIMEDOUT)
++				return ret;
++		} else if (supported) {
+ 			ret = 1;
+ 			host->version |= (supported << 8);
+ 		}
+@@ -862,8 +870,8 @@ static int get_supported_ver_and_cost(un
+ 			return 0;
+ 
+ 		parms.pm_prot = rpc_info.proto->p_proto;
+-		rpc_info.port = rpc_portmap_getport(&pm_info, &parms);
+-		if (rpc_info.port < 0)
++		ret = rpc_portmap_getport(&pm_info, &parms, &rpc_info.port);
++		if (ret < 0)
+ 			goto done;
+ 	}
+ 

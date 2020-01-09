@@ -1,0 +1,40 @@
+autofs-5.0.5 - remove master_mutex_unlock() leftover
+
+From: Leonardo Chiquitto <leonardo.lists@gmail.com>
+
+Commit dc0c3734 ("fix out of order locking in readmap") removes
+the calls to master_mutex_lock() and master_mutex_unlock() from
+master_find_mapent(), but leaves an unlock behind.
+
+Signed-off-by: Leonardo Chiquitto <lchiquitto@novell.com>
+---
+
+ CHANGELOG    |    1 +
+ lib/master.c |    4 +---
+ 2 files changed, 2 insertions(+), 3 deletions(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -198,6 +198,7 @@
+ - use open(2) instead of access(2) to trigger dependent mounts.
+ - document browse option in man page.
+ - fix parse buffer initialization.
++- remove master_mutex_unlock() leftover.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/master.c
++++ autofs-5.0.5/lib/master.c
+@@ -652,10 +652,8 @@ struct master_mapent *master_find_mapent
+ 
+ 		entry = list_entry(p, struct master_mapent, list);
+ 
+-		if (!strcmp(entry->path, path)) {
+-			master_mutex_unlock();
++		if (!strcmp(entry->path, path))
+ 			return entry;
+-		}
+ 	}
+ 
+ 	return NULL;

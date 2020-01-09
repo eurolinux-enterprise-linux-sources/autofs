@@ -1,0 +1,60 @@
+autofs-5.0.7 - make dump maps check for duplicate indirect mounts
+
+From: Ian Kent <raven@themaw.net>
+
+The dumpmaps function was intended for users to find out how the configured
+mounts would be seen by automount. It does a limited amount of checking and
+in particular doesn't report that duplicate indirect map sources will be
+ignored at runtime.
+---
+ CHANGELOG    |    1 +
+ lib/master.c |    7 +++++++
+ 2 files changed, 8 insertions(+)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -131,6 +131,7 @@
+ - fix not bind mounting local filesystem.
+ - fix interface address null check.
+ - improve timeout option description.
++- make dump maps check for duplicate indirect mounts.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/master.c
++++ autofs-5.0.5/lib/master.c
+@@ -1300,6 +1300,7 @@ int master_show_mounts(struct master *ma
+ 		struct master_mapent *this;
+ 		struct autofs_point *ap;
+ 		time_t now = time(NULL);
++		unsigned int count = 0;
+ 		int i;
+ 
+ 		this = list_entry(p, struct master_mapent, list);
+@@ -1308,6 +1309,7 @@ int master_show_mounts(struct master *ma
+ 		ap = this->ap;
+ 
+ 		printf("\nMount point: %s\n", ap->path);
++
+ 		printf("\nsource(s):\n");
+ 
+ 		/*
+@@ -1350,6 +1352,9 @@ int master_show_mounts(struct master *ma
+ 					printf("  map: %s\n", source->argv[0]);
+ 					i = 1;
+ 				}
++				if (count && ap->type == LKP_INDIRECT)
++					printf("  duplicate indirect map entry"
++					       " will be ignored at run time\n");
+ 				if (source->argc > 1) {
+ 					printf("  arguments: ");
+ 					for (; i < source->argc; i++)
+@@ -1369,6 +1374,8 @@ int master_show_mounts(struct master *ma
+ 				} while ((me = cache_lookup_next(source->mc, me)));
+ 			}
+ 
++			count++;
++
+ 			source = source->next;
+ 		}
+ 

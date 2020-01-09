@@ -1,0 +1,136 @@
+autofs-5.0.6 - fix remount deadlock
+
+From: Ian Kent <raven@themaw.net>
+
+When reconstructing the mount tree upon restart a writelock to the map
+entry cache cannot be taken when parsing a direct map entry because a
+readlock is already held higher up in the call tree.
+
+In the place this is done it isn't be necessary to alter the direct map
+entries in the cache. Also, it shouldn't be necessary to delete existing
+multi-mount cache entries to avoid a duplicate multi-mount entry error
+return. The check for a duplicate can be done in the cache handling
+functions.
+---
+
+ CHANGELOG           |    1 
+ lib/cache.c         |    8 ++++--
+ modules/parse_sun.c |   60 ++++++++++++++++++++++++++--------------------------
+ 3 files changed, 36 insertions(+), 33 deletions(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -106,6 +106,7 @@
+ - fix get_nfs_info() can incorrectly fail.
+ - fix ipv6 proximity calculation.
+ - fix expire race.
++- fix remount deadlock.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/cache.c
++++ autofs-5.0.5/lib/cache.c
+@@ -658,10 +658,12 @@ int cache_add_offset(struct mapent_cache
+ 		return CHE_FAIL;
+ 
+ 	me = cache_lookup_distinct(mc, key);
+-	if (me && me != owner)
+-		return CHE_DUPLICATE;
++	if (me && me->age == age) {
++		if (me != owner)
++			return CHE_DUPLICATE;
++	}
+ 
+-	ret = cache_add(mc, owner->source, key, mapent, age);
++	ret = cache_update(mc, owner->source, key, mapent, age);
+ 	if (ret == CHE_FAIL) {
+ 		warn(logopt, "failed to add key %s to cache", key);
+ 		return CHE_FAIL;
+--- autofs-5.0.5.orig/modules/parse_sun.c
++++ autofs-5.0.5/modules/parse_sun.c
+@@ -843,12 +843,17 @@ add_offset_entry(struct autofs_point *ap
+ 		strcpy(m_mapent, loc);
+ 
+ 	ret = cache_add_offset(mc, name, m_key, m_mapent, age);
+-	if (ret == CHE_OK)
++	if (ret == CHE_DUPLICATE)
++		warn(ap->logopt, MODPREFIX
++		     "syntax error or duplicate offset %s -> %s", path, loc);
++	else if (ret == CHE_FAIL)
++		debug(ap->logopt, MODPREFIX
++		      "failed to add multi-mount offset %s -> %s", path, m_mapent);
++	else {
++		ret = CHE_OK;
+ 		debug(ap->logopt, MODPREFIX
+ 		      "added multi-mount offset %s -> %s", path, m_mapent);
+-	else
+-		warn(ap->logopt, MODPREFIX
+-		      "syntax error or duplicate offset %s -> %s", path, loc);
++	}
+ 
+ 	return ret;
+ }
+@@ -1380,7 +1385,7 @@ int parse_mount(struct autofs_point *ap,
+ 	char buf[MAX_ERR_BUF];
+ 	struct map_source *source;
+ 	struct mapent_cache *mc;
+-	struct mapent *me = NULL;
++	struct mapent *me;
+ 	char *pmapent, *options;
+ 	const char *p;
+ 	int mapent_len, rv = 0;
+@@ -1531,33 +1536,28 @@ int parse_mount(struct autofs_point *ap,
+ 			strcat(m_root, name);
+ 		}
+ 
+-		cache_writelock(mc);
+-		me = cache_lookup_distinct(mc, name);
+-		if (!me) {
+-			int ret;
+-			/*
+-			 * Not in the cache, perhaps it's a program map
+-			 * or one that doesn't support enumeration
+-			 */
+-			ret = cache_add(mc, source, name, mapent, time(NULL));
+-			if (ret == CHE_FAIL) {
+-				cache_unlock(mc);
+-				free(options);
+-				return 1;
++		/*
++		 * Can't take the write lock for direct mount entries here
++		 * but they should always be present in the map entry cache.
++		 */
++		if (ap->type == LKP_INDIRECT) {
++			cache_writelock(mc);
++			me = cache_lookup_distinct(mc, name);
++			if (!me) {
++				int ret;
++				/*
++				 * Not in the cache, perhaps it's a program map
++				 * or one that doesn't support enumeration.
++				 */
++				ret = cache_add(mc, source, name, mapent, age);
++				if (ret == CHE_FAIL) {
++					cache_unlock(mc);
++					free(options);
++					return 1;
++				}
+ 			}
+-		} else {
+-			/*
+-			 * If the entry exists it must not have any existing
+-			 * multi-mount subordinate entries since we are
+-			 * mounting this afresh. We need to do this to allow
+-			 * us to fail on the check for duplicate offsets in
+-			 * we don't know when submounts go away.
+-			 */
+-			cache_multi_writelock(me);
+-			cache_delete_offset_list(mc, name);
+-			cache_multi_unlock(me);
++			cache_unlock(mc);
+ 		}
+-		cache_unlock(mc);
+ 
+ 		cache_readlock(mc);
+ 		me = cache_lookup_distinct(mc, name);

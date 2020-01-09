@@ -1,0 +1,71 @@
+autofs-5.0.8 - extend libldap serialization
+
+From: Leonardo Chiquitto <leonardo.lists@gmail.com>
+
+It's necessary to serialize calls to ldap_unbind() as well as the
+initial bind.
+---
+ CHANGELOG             |    1 +
+ modules/lookup_ldap.c |   20 ++++++++++++++++----
+ 2 files changed, 17 insertions(+), 4 deletions(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -147,6 +147,7 @@
+ - fix negative status being reset on map read.
+ - fix ipv6 link local address handling.
+ - fix deadlock in init_ldap_connection.
++- extend fix for crash due to thread unsafe use of libldap.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/lookup_ldap.c
++++ autofs-5.0.5/modules/lookup_ldap.c
+@@ -52,8 +52,9 @@ static struct ldap_schema common_schema[
+ static unsigned int common_schema_count = sizeof(common_schema)/sizeof(struct ldap_schema);
+ 
+ /*
+- * Initialization of LDAP and OpenSSL must be always serialized to
+- * avoid corruption of context structures inside these libraries.
++ * Initialization and de-initialization of LDAP and OpenSSL must be
++ * always serialized to avoid corruption of context structures inside
++ * these libraries.
+  */
+ pthread_mutex_t ldapinit_mutex = PTHREAD_MUTEX_INITIALIZER;
+ 
+@@ -200,7 +201,7 @@ int bind_ldap_simple(unsigned logopt, LD
+ 	return 0;
+ }
+ 
+-int unbind_ldap_connection(unsigned logopt, LDAP *ldap, struct lookup_context *ctxt)
++int __unbind_ldap_connection(unsigned logopt, LDAP *ldap, struct lookup_context *ctxt)
+ {
+ 	int rv;
+ 
+@@ -217,6 +218,17 @@ int unbind_ldap_connection(unsigned logo
+ 	return rv;
+ }
+ 
++int unbind_ldap_connection(unsigned logopt, LDAP *ldap, struct lookup_context *ctxt)
++{
++	int rv;
++
++	ldapinit_mutex_lock();
++	rv = __unbind_ldap_connection(logopt, ldap, ctxt);
++	ldapinit_mutex_unlock();
++
++	return rv;
++}
++
+ LDAP *__init_ldap_connection(unsigned logopt, const char *uri, struct lookup_context *ctxt)
+ {
+ 	LDAP *ldap = NULL;
+@@ -278,7 +290,7 @@ LDAP *__init_ldap_connection(unsigned lo
+ 
+ 		rv = ldap_start_tls_s(ldap, NULL, NULL);
+ 		if (rv != LDAP_SUCCESS) {
+-			unbind_ldap_connection(logopt, ldap, ctxt);
++			__unbind_ldap_connection(logopt, ldap, ctxt);
+ 			if (ctxt->tls_required) {
+ 				error(logopt, MODPREFIX
+ 				      "TLS required but START_TLS failed: %s",

@@ -1,0 +1,33 @@
+autofs-5.0.8 - don't reset errno
+
+From: Werner Fink <werner@suse.de>
+
+Do not reset the error code that might just have been set to ENOTDIR.
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -199,6 +199,7 @@
+ - document browse option in man page.
+ - fix parse buffer initialization.
+ - remove master_mutex_unlock() leftover.
++- don't reset errno.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/daemon/automount.c
++++ autofs-5.0.5/daemon/automount.c
+@@ -107,9 +107,9 @@ static int do_mkdir(const char *parent,
+ 	/* If path exists we're done */
+ 	status = stat(path, &st);
+ 	if (status == 0) {
++		errno = EEXIST;
+ 		if (!S_ISDIR(st.st_mode))
+ 			errno = ENOTDIR;
+-		errno = EEXIST;
+ 		return 0;
+ 	}
+ 

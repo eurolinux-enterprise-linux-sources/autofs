@@ -1,0 +1,157 @@
+autofs-5.0.7 - fix potential null dereference in lookup_mount()
+
+From: Ian Kent <raven@themaw.net>
+
+Updating a negative cache entry should always find an entry but the entry
+lookup return isn't checked and probably should be.
+
+Since this code is duplicated in several modules add it as a function to
+the cache handling code.
+---
+ include/automount.h   |    1 +
+ lib/cache.c           |   20 ++++++++++++++++++++
+ modules/lookup_file.c |   11 +----------
+ modules/lookup_ldap.c |   12 +-----------
+ modules/lookup_sss.c  |   11 +----------
+ modules/lookup_yp.c   |   12 ++----------
+ 6 files changed, 26 insertions(+), 41 deletions(-)
+
+--- autofs-5.0.5.orig/include/automount.h
++++ autofs-5.0.5/include/automount.h
+@@ -188,6 +188,7 @@ struct mapent *cache_lookup_offset(const
+ struct mapent *cache_partial_match(struct mapent_cache *mc, const char *prefix);
+ int cache_add(struct mapent_cache *mc, struct map_source *ms, const char *key, const char *mapent, time_t age);
+ int cache_update_offset(struct mapent_cache *mc, const char *mkey, const char *key, const char *mapent, time_t age);
++void cache_update_negative(struct mapent_cache *mc, struct map_source *ms, const char *key, time_t timeout);
+ int cache_set_parents(struct mapent *mm);
+ int cache_update(struct mapent_cache *mc, struct map_source *ms, const char *key, const char *mapent, time_t age);
+ int cache_delete(struct mapent_cache *mc, const char *key);
+--- autofs-5.0.5.orig/lib/cache.c
++++ autofs-5.0.5/lib/cache.c
+@@ -680,6 +680,26 @@ done:
+ 	return ret; 
+ }
+ 
++void cache_update_negative(struct mapent_cache *mc,
++			   struct map_source *ms, const char *key,
++			   time_t timeout)
++{
++	time_t now = time(NULL);
++	struct mapent *me;
++	int rv = CHE_OK;
++
++	me = cache_lookup_distinct(mc, key);
++	if (!me)
++		rv = cache_update(mc, ms, key, NULL, now);
++	if (rv != CHE_FAIL) {
++		me = cache_lookup_distinct(mc, key);
++		if (me)
++			me->status = now + timeout;
++	}
++	return;
++}
++
++
+ static struct mapent *get_parent(const char *key, struct list_head *head, struct list_head **pos)
+ {
+ 	struct list_head *next;
+--- autofs-5.0.5.orig/modules/lookup_file.c
++++ autofs-5.0.5/modules/lookup_file.c
+@@ -1097,20 +1097,11 @@ do_cache_lookup:
+ 	ret = ctxt->parse->parse_mount(ap, key, key_len,
+ 				       mapent, ctxt->parse->context);
+ 	if (ret) {
+-		time_t now = time(NULL);
+-		int rv = CHE_OK;
+-
+ 		/* Don't update negative cache when re-connecting */
+ 		if (ap->flags & MOUNT_FLAG_REMOUNT)
+ 			return NSS_STATUS_TRYAGAIN;
+ 		cache_writelock(mc);
+-		me = cache_lookup_distinct(mc, key);
+-		if (!me)
+-			rv = cache_update(mc, source, key, NULL, now);
+-		if (rv != CHE_FAIL) {
+-			me = cache_lookup_distinct(mc, key);
+-			me->status = now + ap->negative_timeout;
+-		}
++		cache_update_negative(mc, source, key, ap->negative_timeout);
+ 		cache_unlock(mc);
+ 		return NSS_STATUS_TRYAGAIN;
+ 	}
+--- autofs-5.0.5.orig/modules/lookup_ldap.c
++++ autofs-5.0.5/modules/lookup_ldap.c
+@@ -3052,21 +3052,11 @@ int lookup_mount(struct autofs_point *ap
+ 	ret = ctxt->parse->parse_mount(ap, key, key_len,
+ 				       mapent, ctxt->parse->context);
+ 	if (ret) {
+-		time_t now = time(NULL);
+-		int rv = CHE_OK;
+-
+ 		/* Don't update negative cache when re-connecting */
+ 		if (ap->flags & MOUNT_FLAG_REMOUNT)
+ 			return NSS_STATUS_TRYAGAIN;
+-		/* Record the the mount fail in the cache */
+ 		cache_writelock(mc);
+-		me = cache_lookup_distinct(mc, key);
+-		if (!me)
+-			rv = cache_update(mc, source, key, NULL, now);
+-		if (rv != CHE_FAIL) {
+-			me = cache_lookup_distinct(mc, key);
+-			me->status = now + ap->negative_timeout;
+-		}
++		cache_update_negative(mc, source, key, ap->negative_timeout);
+ 		cache_unlock(mc);
+ 		return NSS_STATUS_TRYAGAIN;
+ 	}
+--- autofs-5.0.5.orig/modules/lookup_sss.c
++++ autofs-5.0.5/modules/lookup_sss.c
+@@ -681,21 +681,12 @@ int lookup_mount(struct autofs_point *ap
+ 	ret = ctxt->parse->parse_mount(ap, key, key_len,
+ 				       mapent, ctxt->parse->context);
+ 	if (ret) {
+-		time_t now = time(NULL);
+-		int rv = CHE_OK;
+-
+ 		/* Don't update negative cache when re-connecting */
+ 		if (ap->flags & MOUNT_FLAG_REMOUNT)
+ 			return NSS_STATUS_TRYAGAIN;
+ 		/* Record the the mount fail in the cache */
+ 		cache_writelock(mc);
+-		me = cache_lookup_distinct(mc, key);
+-		if (!me)
+-			rv = cache_update(mc, source, key, NULL, now);
+-		if (rv != CHE_FAIL) {
+-			me = cache_lookup_distinct(mc, key);
+-			me->status = now + ap->negative_timeout;
+-		}
++		cache_update_negative(mc, source, key, ap->negative_timeout);
+ 		cache_unlock(mc);
+ 		return NSS_STATUS_TRYAGAIN;
+ 	}
+--- autofs-5.0.5.orig/modules/lookup_yp.c
++++ autofs-5.0.5/modules/lookup_yp.c
+@@ -714,21 +714,13 @@ int lookup_mount(struct autofs_point *ap
+ 		ret = ctxt->parse->parse_mount(ap, key, key_len,
+ 					       mapent, ctxt->parse->context);
+ 		if (ret) {
+-			time_t now = time(NULL);
+-			int rv = CHE_OK;
+-
+ 			/* Don't update negative cache when re-connecting */
+ 			if (ap->flags & MOUNT_FLAG_REMOUNT)
+ 				return NSS_STATUS_TRYAGAIN;
+ 			cache_writelock(mc);
+-			me = cache_lookup_distinct(mc, key);
+-			if (!me)
+-				rv = cache_update(mc, source, key, NULL, now);
+-			if (rv != CHE_FAIL) {
+-				me = cache_lookup_distinct(mc, key);
+-				me->status = now + ap->negative_timeout;
+-			}
++			cache_update_negative(mc, source, key, ap->negative_timeout);
+ 			cache_unlock(mc);
++			return NSS_STATUS_TRYAGAIN;
+ 		}
+ 	 }
+ 

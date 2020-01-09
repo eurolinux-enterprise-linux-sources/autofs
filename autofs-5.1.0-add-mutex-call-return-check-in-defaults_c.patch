@@ -1,0 +1,199 @@
+autofs-5.1.0 - add mutex call return check in defaults.c
+
+From: Ian Kent <ikent@redhat.com>
+
+Even though pthread_mutex_lock() and pthread_mutex_unlock() should
+never fail checking their return has very occassionally been useful
+and isn't consistent with the usage elsewhere.
+---
+ CHANGELOG      |    1 +
+ lib/defaults.c |   55 ++++++++++++++++++++++++++++++++++---------------------
+ 2 files changed, 35 insertions(+), 21 deletions(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -235,6 +235,7 @@
+ - check options length before use in parse_amd.c.
+ - fix some out of order evaluations in parse_amd.c.
+ - fix copy and paste error in dup_defaults_entry().
++- add mutex call return check in defaults.c.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/defaults.c
++++ autofs-5.0.5/lib/defaults.c
+@@ -171,6 +171,19 @@ static int conf_update(const char *, con
+ static void conf_delete(const char *, const char *);
+ static struct conf_option *conf_lookup(const char *, const char *);
+ 
++static void defaults_mutex_lock(void)
++{
++	int status = pthread_mutex_lock(&conf_mutex);
++	if (status)
++		fatal(status);
++}
++
++static void defaults_mutex_unlock(void)
++{
++	int status = pthread_mutex_unlock(&conf_mutex);
++	if (status)
++		fatal(status);
++}
+ 
+ static void message(unsigned int to_syslog, const char *msg, ...)
+ {
+@@ -253,9 +266,9 @@ static void __conf_release(void)
+ 
+ void defaults_conf_release(void)
+ {
+-	pthread_mutex_lock(&conf_mutex);
++	defaults_mutex_lock();
+ 	__conf_release();
+-	pthread_mutex_unlock(&conf_mutex);
++	defaults_mutex_unlock();
+ 	return;
+ }
+ 
+@@ -727,11 +740,11 @@ static unsigned int conf_section_exists(
+ 		return 0;
+ 
+ 	ret = 0;
+-	pthread_mutex_lock(&conf_mutex);
++	defaults_mutex_lock();
+ 	co = conf_lookup(section, section);
+ 	if (co)
+ 		ret = 1;
+-	pthread_mutex_unlock(&conf_mutex);
++	defaults_mutex_unlock();
+ 
+ 	return ret;
+ }
+@@ -1057,7 +1070,7 @@ unsigned int defaults_read_config(unsign
+ 
+ 	conf = oldconf = NULL;
+ 
+-	pthread_mutex_lock(&conf_mutex);
++	defaults_mutex_lock();
+ 	if (!config) {
+ 		if (conf_init()) {
+ 			message(to_syslog, "failed to init config");
+@@ -1149,7 +1162,7 @@ out:
+ 		fclose(conf);
+ 	if (oldconf)
+ 		fclose(oldconf);
+-	pthread_mutex_unlock(&conf_mutex);
++	defaults_mutex_unlock();
+ 	return ret;
+ }
+ 
+@@ -1158,11 +1171,11 @@ static char *conf_get_string(const char
+ 	struct conf_option *co;
+ 	char *val = NULL;
+ 
+-	pthread_mutex_lock(&conf_mutex);
++	defaults_mutex_lock();
+ 	co = conf_lookup(section, name);
+ 	if (co && co->value)
+ 		val = strdup(co->value);
+-	pthread_mutex_unlock(&conf_mutex);
++	defaults_mutex_unlock();
+ 	return val;
+ }
+ 
+@@ -1171,11 +1184,11 @@ static long conf_get_number(const char *
+ 	struct conf_option *co;
+ 	long val = -1;
+ 
+-	pthread_mutex_lock(&conf_mutex);
++	defaults_mutex_lock();
+ 	co = conf_lookup(section, name);
+ 	if (co && co->value)
+ 		val = atol(co->value);
+-	pthread_mutex_unlock(&conf_mutex);
++	defaults_mutex_unlock();
+ 	return val;
+ }
+ 
+@@ -1184,7 +1197,7 @@ static int conf_get_yesno(const char *se
+ 	struct conf_option *co;
+ 	int val = -1;
+ 
+-	pthread_mutex_lock(&conf_mutex);
++	defaults_mutex_lock();
+ 	co = conf_lookup(section, name);
+ 	if (co && co->value) {
+ 		if (isdigit(*co->value))
+@@ -1194,7 +1207,7 @@ static int conf_get_yesno(const char *se
+ 		else if (!strcasecmp(co->value, "no"))
+ 			val = 0;
+ 	}
+-	pthread_mutex_unlock(&conf_mutex);
++	defaults_mutex_unlock();
+ 	return val;
+ }
+ 
+@@ -1271,10 +1284,10 @@ struct list_head *defaults_get_uris(void
+ 		return NULL;
+ 	}
+ 
+-	pthread_mutex_lock(&conf_mutex);
++	defaults_mutex_lock();
+ 	co = conf_lookup(autofs_gbl_sec, NAME_LDAP_URI);
+ 	if (!co) {
+-		pthread_mutex_unlock(&conf_mutex);
++		defaults_mutex_unlock();
+ 		free(list);
+ 		return NULL;
+ 	}
+@@ -1285,7 +1298,7 @@ struct list_head *defaults_get_uris(void
+ 				add_uris(co->value, list);
+ 		co = co->next;
+ 	}
+-	pthread_mutex_unlock(&conf_mutex);
++	defaults_mutex_unlock();
+ 
+ 	if (list_empty(list)) {
+ 		free(list);
+@@ -1397,10 +1410,10 @@ struct ldap_searchdn *defaults_get_searc
+ 	if (!defaults_read_config(0))
+ 		return NULL;
+ 
+-	pthread_mutex_lock(&conf_mutex);
++	defaults_mutex_lock();
+ 	co = conf_lookup(autofs_gbl_sec, NAME_SEARCH_BASE);
+ 	if (!co) {
+-		pthread_mutex_unlock(&conf_mutex);
++		defaults_mutex_unlock();
+ 		return NULL;
+ 	}
+ 
+@@ -1416,7 +1429,7 @@ struct ldap_searchdn *defaults_get_searc
+ 
+ 		new = alloc_searchdn(co->value);
+ 		if (!new) {
+-			pthread_mutex_unlock(&conf_mutex);
++			defaults_mutex_unlock();
+ 			defaults_free_searchdns(sdn);
+ 			return NULL;
+ 		}
+@@ -1433,7 +1446,7 @@ struct ldap_searchdn *defaults_get_searc
+ 
+ 		co = co->next;
+ 	}
+-	pthread_mutex_unlock(&conf_mutex);
++	defaults_mutex_unlock();
+ 
+ 	return sdn;
+ }
+@@ -1511,9 +1524,9 @@ int defaults_master_set(void)
+ {
+ 	struct conf_option *co;
+ 
+-	pthread_mutex_lock(&conf_mutex);
++	defaults_mutex_lock();
+ 	co = conf_lookup(autofs_gbl_sec, NAME_MASTER_MAP);
+-	pthread_mutex_unlock(&conf_mutex);
++	defaults_mutex_unlock();
+ 	if (co)
+ 		return 1;
+ 	return 0;

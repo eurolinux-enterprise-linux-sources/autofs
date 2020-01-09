@@ -1,0 +1,29 @@
+autofs-5.0.8 - get_nfs_info() should query portmapper if port is not given
+
+From: Scott Mayhew <smayhew@redhat.com>
+
+It shouldn't just assume it can use port 2049.
+
+Signed-off-by: Scott Mayhew <smayhew@redhat.com>
+---
+ modules/replicated.c |    9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+--- autofs-5.0.5.orig/modules/replicated.c
++++ autofs-5.0.5/modules/replicated.c
+@@ -451,9 +451,12 @@ static unsigned int get_nfs_info(unsigne
+ 
+ 	parms.pm_prog = NFS_PROGRAM;
+ 	rpc_info->proto = proto;
+-	if (port < 0)
+-		rpc_info->port = NFS_PORT;
+-	else if (port > 0)
++	if (port < 0) {
++		if (version & NFS4_REQUESTED)
++			rpc_info->port = NFS_PORT;
++		else
++			port = 0;
++	} else if (port > 0)
+ 		rpc_info->port = port;
+ 
+ 	if (!(version & NFS4_REQUESTED))

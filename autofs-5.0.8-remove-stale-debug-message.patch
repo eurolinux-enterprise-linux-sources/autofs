@@ -1,0 +1,19 @@
+autofs-5.0.8 - remove stale debug message
+
+From: Ian Kent <raven@themaw.net>
+
+
+---
+ modules/parse_sun.c |    1 -
+ 1 file changed, 1 deletion(-)
+
+--- autofs-5.0.5.orig/modules/parse_sun.c
++++ autofs-5.0.5/modules/parse_sun.c
+@@ -1397,7 +1397,6 @@ int parse_mount(struct autofs_point *ap,
+ 			if (!l) {
+ 				if (!(strstr(myoptions, "fstype=autofs") &&
+ 				      strstr(myoptions, "hosts"))) {
+-					error(LOGOPT_ANY, "I think I'm a hosts map? l %d", l);
+ 					cache_delete_offset_list(mc, name);
+ 					cache_multi_unlock(me);
+ 					cache_unlock(mc);

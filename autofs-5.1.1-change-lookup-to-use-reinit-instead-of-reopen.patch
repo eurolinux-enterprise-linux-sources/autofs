@@ -1,0 +1,73 @@
+autofs-5.1.1 - change lookup to use reinit instead of reopen
+
+From: Ian Kent <raven@themaw.net>
+
+When a HUP signal is received lookup module are cloed and then re-opened.
+This can occassionally cause a problem with library data segemets and
+lead to a SEGV.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG       |    1 +
+ daemon/lookup.c |   32 +++++++++++++++++++++-----------
+ 2 files changed, 22 insertions(+), 11 deletions(-)
+
+--- autofs-5.0.5.orig/daemon/lookup.c
++++ autofs-5.0.5/daemon/lookup.c
+@@ -298,17 +298,27 @@ static int do_read_map(struct autofs_poi
+ 	struct lookup_mod *lookup;
+ 	int status;
+ 
+-	status = open_lookup(map->type, "", map->format,
+-			     map->argc, map->argv, &lookup);
+-	if (status != NSS_STATUS_SUCCESS) {
+-		debug(ap->logopt, "lookup module %s failed", map->type);
+-		return status;
+-	}
+-
++	lookup = NULL;
+ 	master_source_writelock(ap->entry);
+-	if (map->lookup)
+-		close_lookup(map->lookup);
+-	map->lookup = lookup;
++	if (!map->lookup) {
++		status = open_lookup(map->type, "", map->format,
++				     map->argc, map->argv, &lookup);
++		if (status != NSS_STATUS_SUCCESS) {
++			master_source_unlock(ap->entry);
++			debug(ap->logopt,
++			      "lookup module %s open failed", map->type);
++			return status;
++		}
++		map->lookup = lookup;
++	} else {
++		lookup = map->lookup;
++		status = lookup->lookup_reinit(map->format,
++					       map->argc, map->argv,
++					       &lookup->context);
++		if (status)
++			warn(ap->logopt,
++			     "lookup module %s reinit failed", map->type);
++	}
+ 	master_source_unlock(ap->entry);
+ 
+ 	if (!map->stale)
+@@ -740,7 +750,7 @@ int do_lookup_mount(struct autofs_point
+ 				     map->format, map->argc, map->argv, &lookup);
+ 		if (status != NSS_STATUS_SUCCESS) {
+ 			debug(ap->logopt,
+-			      "lookup module %s failed", map->type);
++			      "lookup module %s open failed", map->type);
+ 			return status;
+ 		}
+ 		map->lookup = lookup;
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -271,6 +271,7 @@
+ - fix direct mount stale instance flag reset.
+ - fix missing source sss in multi map lookup.
+ - fix update_hosts_mounts() return.
++- change lookup to use reinit instead of reopen.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------

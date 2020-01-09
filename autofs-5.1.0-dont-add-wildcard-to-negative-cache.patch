@@ -1,0 +1,48 @@
+autofs-5.1.0 - dont add wildcard to negative cache
+
+From: Ian Kent <ikent@redhat.com>
+
+If the wilcard is added to the negative cache it prevents any
+further matching of the wildcard for the given map.
+---
+ CHANGELOG       |    1 +
+ daemon/lookup.c |    4 ++++
+ lib/cache.c     |    4 ++++
+ 3 files changed, 9 insertions(+)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -244,6 +244,7 @@
+ - ignore multiple commas in options strings.
+ - make negative cache update consistent for all lookup modules.
+ - ensure negative cache isn't updated on remount.
++- dont add wildcard to negative cache.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/daemon/lookup.c
++++ autofs-5.0.5/daemon/lookup.c
+@@ -1055,6 +1055,10 @@ static void update_negative_cache(struct
+ 	if (source && source->depth)
+ 		return;
+ 
++	/* Don't update the wildcard */
++	if (strlen(name) == 1 && *name == '*')
++		return;
++
+ 	/* Have we recorded the lookup fail for negative caching? */
+ 	me = lookup_source_mapent(ap, name, LKP_DISTINCT);
+ 	if (me)
+--- autofs-5.0.5.orig/lib/cache.c
++++ autofs-5.0.5/lib/cache.c
+@@ -762,6 +762,10 @@ void cache_update_negative(struct mapent
+ 	struct mapent *me;
+ 	int rv = CHE_OK;
+ 
++	if (strlen(key) == 1 && *key == '*')
++		return;
++
++	/* Don't update the wildcard */
+ 	me = cache_lookup_distinct(mc, key);
+ 	if (me)
+ 		rv = cache_push_mapent(me, NULL);

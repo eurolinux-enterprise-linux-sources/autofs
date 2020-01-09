@@ -1,0 +1,33 @@
+autofs-5.1.1 - fix memory leak in ldap do_init()
+
+From: Ian Kent <raven@themaw.net>
+
+Fix error return without free of temporory allocated storage in
+do_init().
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG             |    1 +
+ modules/lookup_ldap.c |    1 +
+ 2 files changed, 2 insertions(+)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -284,6 +284,7 @@
+ - guard against incorrect umount return.
+ - fix direct map expire not set for initail empty map.
+ - fix memory leak in nisplus lookup_reinit().
++- fix memory leak in ldap do_init().
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/lookup_ldap.c
++++ autofs-5.0.5/modules/lookup_ldap.c
+@@ -1752,6 +1752,7 @@ static int do_init(const char *mapfmt,
+ 		 */
+ 		if (!parse_server_string(LOGOPT_NONE, tmp, ctxt)) {
+ 			error(LOGOPT_ANY, MODPREFIX "cannot parse server string");
++			free(tmp);
+ 			return 1;
+ 		}
+ 		free(tmp);

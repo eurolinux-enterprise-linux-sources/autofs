@@ -1,0 +1,37 @@
+autofs-5.0.8 - fix fix options compare
+
+From: Ian Kent <ikent@redhat.com>
+
+The change to fix the mount options compare replaced the strncmp()
+function used to compare substrings of options with an internal
+function that also used the passed in length for the compare.
+
+But the case of a passed in length of 0 was not handled and for
+that case the function returned a value different to strncmp()
+and code that relied on that behaviour n longer behaves as expected.
+---
+ CHANGELOG      |    1 +
+ lib/cat_path.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -143,6 +143,7 @@
+ - fix get_nfs_info() probe.
+ - fix crash due to thread unsafe use of libldap.
+ - fix options compare.
++- fix fix options compare.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/cat_path.c
++++ autofs-5.0.5/lib/cat_path.c
+@@ -92,7 +92,7 @@ int _strncmp(const char *s1, const char
+ {
+ 	size_t len = strlen(s1);
+ 
+-	if (n != len)
++	if (n && n != len)
+ 		return n - len;
+ 	return strncmp(s1, s2, n);
+ }

@@ -1,0 +1,19 @@
+autofs-5.0.9 - amd lookup update changelog
+
+From: Ian Kent <raven@themaw.net>
+
+
+---
+ CHANGELOG |    1 +
+ 1 file changed, 1 insertion(+)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -201,6 +201,7 @@
+ - remove master_mutex_unlock() leftover.
+ - don't reset errno.
+ - fix typo in libtirpc file name.
++- add amd map format parser.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------

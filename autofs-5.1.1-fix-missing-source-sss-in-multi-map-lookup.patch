@@ -1,0 +1,34 @@
+autofs-5.1.1 - fix missing source sss in multi map lookup
+
+From: Ian Kent <raven@themaw.net>
+
+The sss source isn't accounted for in the multi map lookup module.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG              |    1 +
+ modules/lookup_multi.c |    3 ++-
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -269,6 +269,7 @@
+ - fix error handling on ldap bind fail.
+ - fix gcc5 complaints.
+ - fix direct mount stale instance flag reset.
++- fix missing source sss in multi map lookup.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/lookup_multi.c
++++ autofs-5.0.5/modules/lookup_multi.c
+@@ -58,7 +58,8 @@ static struct lookup_mod *nss_open_looku
+ 	    !strncmp(argv[0], "nisplus", 7) ||
+ 	    !strncmp(argv[0], "nis", 3) ||
+ 	    !strncmp(argv[0], "ldaps", 5) ||
+-	    !strncmp(argv[0], "ldap", 4)) {
++	    !strncmp(argv[0], "ldap", 4) ||
++	    !strncmp(argv[0], "sss", 3)) {
+ 		const char *fmt = strchr(argv[0], ',');
+ 		if (fmt)
+ 			fmt++;

@@ -1,0 +1,45 @@
+autofs-5.0.7 - fix use cache entry after free mistake
+
+From: Ian Kent <ikent@redhat.com>
+
+Fix an obvious use after free mistake in lookup_prune_one_cache().
+---
+
+ CHANGELOG       |    1 +
+ daemon/lookup.c |    7 +++++--
+ 2 files changed, 6 insertions(+), 2 deletions(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -149,6 +149,7 @@
+ - fix deadlock in init_ldap_connection.
+ - extend fix for crash due to thread unsafe use of libldap.
+ - check scandir() return value.
++- fix use cache entry after free in lookup_prune_one_cache().
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/daemon/lookup.c
++++ autofs-5.0.5/daemon/lookup.c
+@@ -1094,15 +1094,18 @@ void lookup_prune_one_cache(struct autof
+ 		if (valid)
+ 			cache_delete(mc, key);
+ 		else if (!is_mounted(_PROC_MOUNTS, path, MNTS_AUTOFS)) {
++			dev_t devid = ap->dev;
+ 			status = CHE_FAIL;
++			if (ap->type == LKP_DIRECT)
++				devid = this->dev;
+ 			if (this->ioctlfd == -1)
+ 				status = cache_delete(mc, key);
+ 			if (status != CHE_FAIL) {
+ 				if (ap->type == LKP_INDIRECT) {
+ 					if (ap->flags & MOUNT_FLAG_GHOST)
+-						rmdir_path(ap, path, ap->dev);
++						rmdir_path(ap, path, devid);
+ 				} else
+-					rmdir_path(ap, path, this->dev);
++					rmdir_path(ap, path, devid);
+ 			}
+ 		}
+ 		cache_unlock(mc);

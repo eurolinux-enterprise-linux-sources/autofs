@@ -1,0 +1,36 @@
+autofs-5.0.7 - dont wait forever to restart
+
+From: Ian Kent <ikent@redhat.com>
+
+When restarting autofs the daemon must be stopped before it is started
+again if it is to function properly. The stop function can't wait forever
+if the daemon won't exit for some reason.
+
+So, if the daemon is still running after the stop, run stop() again, wait
+a bit longer and if it still hasn't stopped kill it with a SIGKILL to clear
+the way for the startup.
+---
+
+ redhat/autofs.init.in |   10 ++++++++++
+ 1 file changed, 10 insertions(+)
+
+
+--- autofs-5.0.5.orig/redhat/autofs.init.in
++++ autofs-5.0.5/redhat/autofs.init.in
+@@ -129,6 +129,16 @@ function restart() {
+ 	status autofs > /dev/null 2>&1
+ 	if [ $? -eq 0 ]; then
+ 		stop
++		if [ -n "`pidof $prog`" ]; then
++			# If we failed to stop, try at least one more time
++			# after waiting a little while
++			sleep 20
++			stop
++			auto_pid=`pidof $prog`
++			if [ -n "$auto_pid" ]; then
++				kill -9 $auto_pid
++			fi
++		fi
+ 	fi
+ 	start
+ }

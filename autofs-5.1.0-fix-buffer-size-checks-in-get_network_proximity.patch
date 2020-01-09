@@ -1,0 +1,52 @@
+autofs-5.1.0 - fix buffer size checks in get_network_proximity()
+
+From: Ian Kent <raven@themaw.net>
+
+Add several buffer size checks in get_network_proximity().
+---
+ CHANGELOG        |    1 +
+ lib/parse_subs.c |    8 +++++---
+ 2 files changed, 6 insertions(+), 3 deletions(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -226,6 +226,7 @@
+ - fix FILE pointer check in defaults_read_config().
+ - fix memory leak in conf_amd_get_log_options().
+ - fix signed comparison in inet_fill_net().
++- fix buffer size checks in get_network_proximity().
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/parse_subs.c
++++ autofs-5.0.5/lib/parse_subs.c
+@@ -437,7 +437,7 @@ unsigned int get_network_proximity(const
+ {
+ 	struct addrinfo hints;
+ 	struct addrinfo *ni, *this;
+-	char name_or_num[NI_MAXHOST];
++	char name_or_num[NI_MAXHOST + 1];
+ 	unsigned int proximity;
+ 	char *net;
+ 	int ret;
+@@ -449,16 +449,18 @@ unsigned int get_network_proximity(const
+ 	if (net)
+ 		strcpy(name_or_num, net);
+ 	else {
+-		char this[NI_MAXHOST];
++		char this[NI_MAXHOST + 1];
+ 		char *mask;
+ 
++		if (strlen(name) > NI_MAXHOST)
++			return PROXIMITY_ERROR;
+ 		strcpy(this, name);
+ 		if ((mask = strchr(this, '/')))
+ 			*mask++ = '\0';
+ 		if (!strchr(this, '.'))
+ 			strcpy(name_or_num, this);
+ 		else {
+-			char buf[NI_MAXHOST], *new;
++			char buf[NI_MAXHOST + 1], *new;
+ 			new = inet_fill_net(this, buf);
+ 			if (!new)
+ 				return PROXIMITY_ERROR;

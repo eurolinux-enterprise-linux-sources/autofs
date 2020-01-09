@@ -1,0 +1,216 @@
+autofs-5.1.0 - add a prefix to program map stdvars
+
+From: Ian Kent <ikent@redhat.com>
+
+When a program map uses an interpreted languages like python it's
+possible to load and execute arbitray code from a user home directory.
+This is because the standard environment variables are used to locate
+and load modules when using these languages.
+
+To avoid that we need to add a prefix to these environment names so
+they aren't used for this purpose. The prefix used is "AUTOFS_" and
+is not configurable.
+---
+ CHANGELOG                |    1 
+ include/mounts.h         |    4 +-
+ lib/mounts.c             |   84 +++++++++++++++++++++++++++++++++++++++--------
+ modules/lookup_program.c |    2 -
+ modules/parse_sun.c      |    8 ++--
+ 5 files changed, 78 insertions(+), 21 deletions(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -248,6 +248,7 @@
+ - fix fix master map type check.
+ - fix typo in update_hosts_mounts().
+ - fix hosts map update on reload.
++- add a prefix to program map stdvars.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/include/mounts.h
++++ autofs-5.0.5/include/mounts.h
+@@ -87,8 +87,8 @@ extern unsigned int nfs_mount_uses_strin
+ 
+ struct amd_entry;
+ 
+-struct substvar *addstdenv(struct substvar *sv);
+-struct substvar *removestdenv(struct substvar *sv);
++struct substvar *addstdenv(struct substvar *sv, const char *prefix);
++struct substvar *removestdenv(struct substvar *sv, const char *prefix);
+ void add_std_amd_vars(struct substvar *sv);
+ void remove_std_amd_vars(void);
+ struct amd_entry *new_amd_entry(const struct substvar *sv);
+--- autofs-5.0.5.orig/lib/mounts.c
++++ autofs-5.0.5/lib/mounts.c
+@@ -32,6 +32,7 @@
+ 
+ #define MAX_OPTIONS_LEN		80
+ #define MAX_MNT_NAME_LEN	30
++#define MAX_ENV_NAME		15
+ 
+ #define EBUFSIZ 1024
+ 
+@@ -328,7 +329,61 @@ int check_nfs_mount_version(struct nfs_m
+ }
+ #endif
+ 
+-struct substvar *addstdenv(struct substvar *sv)
++static char *set_env_name(const char *prefix, const char *name, char *buf)
++{
++	size_t len;
++
++	len = strlen(name);
++	if (prefix)
++		len += strlen(prefix);
++	len++;
++
++	if (len > MAX_ENV_NAME)
++		return NULL;
++
++	if (!prefix)
++		strcpy(buf, name);
++	else {
++		strcpy(buf, prefix);
++		strcat(buf, name);
++	}
++	return buf;
++}
++
++static struct substvar *do_macro_addvar(struct substvar *list,
++					const char *prefix,
++					const char *name,
++					const char *val)
++{
++	char buf[MAX_ENV_NAME + 1];
++	char *new;
++	size_t len;
++
++	new = set_env_name(prefix, name, buf);
++	if (new) {
++		len = strlen(new);
++		list = macro_addvar(list, new, len, val);
++	}
++	return list;
++}
++
++static struct substvar *do_macro_removevar(struct substvar *list,
++					   const char *prefix,
++					   const char *name)
++{
++	char buf[MAX_ENV_NAME + 1];
++	char *new;
++	size_t len;
++
++	new = set_env_name(prefix, name, buf);
++	if (new) {
++		len = strlen(new);
++		list = macro_removevar(list, new, len);
++	}
++	return list;
++}
++
++struct substvar *addstdenv(struct substvar *sv, const char *prefix)
+ {
+ 	struct substvar *list = sv;
+ 	struct thread_stdenv_vars *tsv;
+@@ -343,14 +398,14 @@ struct substvar *addstdenv(struct substv
+ 		num = (long) tsv->uid;
+ 		ret = sprintf(numbuf, "%ld", num);
+ 		if (ret > 0)
+-			list = macro_addvar(list, "UID", 3, numbuf);
++			list = do_macro_addvar(list, prefix, "UID", numbuf);
+ 		num = (long) tsv->gid;
+ 		ret = sprintf(numbuf, "%ld", num);
+ 		if (ret > 0)
+-			list = macro_addvar(list, "GID", 3, numbuf);
+-		list = macro_addvar(list, "USER", 4, tsv->user);
+-		list = macro_addvar(list, "GROUP", 5, tsv->group);
+-		list = macro_addvar(list, "HOME", 4, tsv->home);
++			list = do_macro_addvar(list, prefix, "GID", numbuf);
++		list = do_macro_addvar(list, prefix, "USER", tsv->user);
++		list = do_macro_addvar(list, prefix, "GROUP", tsv->group);
++		list = do_macro_addvar(list, prefix, "HOME", tsv->home);
+ 		mv = macro_findvar(list, "HOST", 4);
+ 		if (mv) {
+ 			char *shost = strdup(mv->val);
+@@ -358,7 +413,8 @@ struct substvar *addstdenv(struct substv
+ 				char *dot = strchr(shost, '.');
+ 				if (dot)
+ 					*dot = '\0';
+-				list = macro_addvar(list, "SHOST", 5, shost);
++				list = do_macro_addvar(list,
++						       prefix, "SHOST", shost);
+ 				free(shost);
+ 			}
+ 		}
+@@ -366,16 +422,16 @@ struct substvar *addstdenv(struct substv
+ 	return list;
+ }
+ 
+-struct substvar *removestdenv(struct substvar *sv)
++struct substvar *removestdenv(struct substvar *sv, const char *prefix)
+ {
+ 	struct substvar *list = sv;
+ 
+-	list = macro_removevar(list, "UID", 3);
+-	list = macro_removevar(list, "USER", 4);
+-	list = macro_removevar(list, "HOME", 4);
+-	list = macro_removevar(list, "GID", 3);
+-	list = macro_removevar(list, "GROUP", 5);
+-	list = macro_removevar(list, "SHOST", 5);
++	list = do_macro_removevar(list, prefix, "UID");
++	list = do_macro_removevar(list, prefix, "USER");
++	list = do_macro_removevar(list, prefix, "HOME");
++	list = do_macro_removevar(list, prefix, "GID");
++	list = do_macro_removevar(list, prefix, "GROUP");
++	list = do_macro_removevar(list, prefix, "SHOST");
+ 	return list;
+ }
+ 
+--- autofs-5.0.5.orig/modules/lookup_program.c
++++ autofs-5.0.5/modules/lookup_program.c
+@@ -181,7 +181,7 @@ static char *lookup_one(struct autofs_po
+ 		if (ctxt->mapfmt && strcmp(ctxt->mapfmt, "MAPFMT_DEFAULT")) {
+ 			struct parse_context *pctxt = (struct parse_context *) ctxt->parse->context;
+ 			/* Add standard environment as seen by sun map parser */
+-			pctxt->subst = addstdenv(pctxt->subst);
++			pctxt->subst = addstdenv(pctxt->subst, "AUTOFS_");
+ 			macro_setenv(pctxt->subst);
+ 		}
+ 		execl(ctxt->mapname, ctxt->mapname, name, NULL);
+--- autofs-5.0.5.orig/modules/parse_sun.c
++++ autofs-5.0.5/modules/parse_sun.c
+@@ -1214,12 +1214,12 @@ int parse_mount(struct autofs_point *ap,
+ 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cur_state);
+ 	macro_lock();
+ 
+-	ctxt->subst = addstdenv(ctxt->subst);
++	ctxt->subst = addstdenv(ctxt->subst, NULL);
+ 
+ 	mapent_len = expandsunent(mapent, NULL, name, ctxt->subst, slashify);
+ 	if (mapent_len == 0) {
+ 		error(ap->logopt, MODPREFIX "failed to expand map entry");
+-		ctxt->subst = removestdenv(ctxt->subst);
++		ctxt->subst = removestdenv(ctxt->subst, NULL);
+ 		macro_unlock();
+ 		pthread_setcancelstate(cur_state, NULL);
+ 		return 1;
+@@ -1229,7 +1229,7 @@ int parse_mount(struct autofs_point *ap,
+ 	if (!pmapent) {	
+ 		char *estr = strerror_r(errno, buf, MAX_ERR_BUF);
+ 		logerr(MODPREFIX "alloca: %s", estr);
+-		ctxt->subst = removestdenv(ctxt->subst);
++		ctxt->subst = removestdenv(ctxt->subst, NULL);
+ 		macro_unlock();
+ 		pthread_setcancelstate(cur_state, NULL);
+ 		return 1;
+@@ -1237,7 +1237,7 @@ int parse_mount(struct autofs_point *ap,
+ 	pmapent[mapent_len] = '\0';
+ 
+ 	expandsunent(mapent, pmapent, name, ctxt->subst, slashify);
+-	ctxt->subst = removestdenv(ctxt->subst);
++	ctxt->subst = removestdenv(ctxt->subst, NULL);
+ 
+ 	macro_unlock();
+ 	pthread_setcancelstate(cur_state, NULL);

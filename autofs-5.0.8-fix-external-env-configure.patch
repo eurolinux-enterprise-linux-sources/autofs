@@ -1,0 +1,45 @@
+autofs-5.0.8 - fix external env configure
+
+From: Ian Kent <raven@themaw.net>
+
+Macro lookup can also resolve names in the external environment.
+The configure script disables this by default but the configure
+help implies it is enabled by default.
+---
+ CHANGELOG    |    1 +
+ configure    |    2 +-
+ configure.in |    2 +-
+ 3 files changed, 3 insertions(+), 2 deletions(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -184,6 +184,7 @@
+ - add negative cache lookup to hesiod lookup.
+ - fix use get_proximity() without libtirpc.
+ - document allowed map sources in auto.master.
++- fix external env configure.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/configure
++++ autofs-5.0.5/configure
+@@ -5387,7 +5387,7 @@ else
+   enableval=yes
+ fi
+ 
+-if test x$enable_ext_env = xyes; then
++if test x$enable_ext_env = xyes -o x$enableval = xyes; then
+ 
+ $as_echo "#define ENABLE_EXT_ENV 1" >>confdefs.h
+ 
+--- autofs-5.0.5.orig/configure.in
++++ autofs-5.0.5/configure.in
+@@ -316,7 +316,7 @@ AC_SUBST(DAEMON_LDFLAGS)
+ AC_ARG_ENABLE(ext-env,
+ [  --disable-ext-env	  disable search in environment for substitution variable],,
+ 	enableval=yes)
+-if test x$enable_ext_env = xyes; then
++if test x$enable_ext_env = xyes -o x$enableval = xyes; then
+         AC_DEFINE(ENABLE_EXT_ENV, 1, [leave this alone])
+ fi
+ 

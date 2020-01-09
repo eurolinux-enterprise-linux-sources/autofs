@@ -1,0 +1,157 @@
+autofs-5.1.0 - remove unused offset handling code
+
+From: Ian Kent <raven@themaw.net>
+
+Some offset handling functions were moved into the cache module
+a while ago and are now unused.
+---
+ CHANGELOG        |    1 
+ include/mounts.h |    8 ----
+ lib/mounts.c     |   95 -------------------------------------------------------
+ 3 files changed, 1 insertion(+), 103 deletions(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -279,6 +279,7 @@
+ - fix out of order call in program map lookup.
+ - fix lsb service name in init script.
+ - revert special case cifs escapes.
++- remove unused offset handling code.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/include/mounts.h
++++ autofs-5.0.5/include/mounts.h
+@@ -68,11 +68,6 @@ struct mnt_list {
+ 	struct list_head list;
+ 	struct list_head entries;
+ 	struct list_head sublist;
+-	/*
+-	 * Offset mount handling ie. add_ordered_list
+-	 * and get_offset.
+-	 */
+-	struct list_head ordered;
+ };
+ 
+ 
+@@ -109,9 +104,6 @@ void free_mnt_list(struct mnt_list *list
+ int contained_in_local_fs(const char *path);
+ int is_mounted(const char *table, const char *path, unsigned int type);
+ int has_fstab_option(const char *opt);
+-char *get_offset(const char *prefix, char *offset,
+-                 struct list_head *head, struct list_head **pos);
+-void add_ordered_list(struct mnt_list *ent, struct list_head *head);
+ void tree_free_mnt_tree(struct mnt_list *tree);
+ struct mnt_list *tree_make_mnt_tree(const char *table, const char *path);
+ int tree_get_mnt_list(struct mnt_list *mnts, struct list_head *list, const char *path, int include);
+--- autofs-5.0.5.orig/lib/mounts.c
++++ autofs-5.0.5/lib/mounts.c
+@@ -1090,100 +1090,6 @@ int has_fstab_option(const char *opt)
+ 	return ret;
+ }
+ 
+-char *get_offset(const char *prefix, char *offset,
+-		 struct list_head *head, struct list_head **pos)
+-{
+-	struct list_head *next;
+-	struct mnt_list *this;
+-	size_t plen = strlen(prefix);
+-	size_t len = 0;
+-
+-	*offset = '\0';
+-	next = *pos ? (*pos)->next : head->next;
+-	while (next != head) {
+-		char *pstart, *pend;
+-
+-		this = list_entry(next, struct mnt_list, ordered);
+-		*pos = next;
+-		next = next->next;
+-
+-		if (strlen(this->path) <= plen)
+-			continue;
+-
+-		if (!strncmp(prefix, this->path, plen)) {
+-			pstart = &this->path[plen];
+-
+-			/* not part of this sub-tree */
+-			if (*pstart != '/')
+-				continue;
+-
+-			/* get next offset */
+-			pend = pstart;
+-			while (*pend++) ;
+-			len = pend - pstart - 1;
+-			strncpy(offset, pstart, len);
+-			offset[len] ='\0';
+-			break;
+-		}
+-	}
+-
+-	while (next != head) {
+-		char *pstart;
+-
+-		this = list_entry(next, struct mnt_list, ordered);
+-
+-		if (strlen(this->path) <= plen + len)
+-			break;
+-
+-		pstart = &this->path[plen];
+-
+-		/* not part of this sub-tree */
+-		if (*pstart != '/')
+-			break;
+-
+-		/* new offset */
+-		if (!*(pstart + len + 1))
+-			break;
+-
+-		/* compare next offset */
+-		if (pstart[len] != '/' || strncmp(offset, pstart, len))
+-			break;
+-
+-		*pos = next;
+-		next = next->next;
+-	}
+-
+-	return *offset ? offset : NULL;
+-}
+-
+-void add_ordered_list(struct mnt_list *ent, struct list_head *head)
+-{
+-	struct list_head *p;
+-	struct mnt_list *this;
+-
+-	list_for_each(p, head) {
+-		size_t tlen;
+-		int eq;
+-
+-		this = list_entry(p, struct mnt_list, ordered);
+-		tlen = strlen(this->path);
+-
+-		eq = strncmp(this->path, ent->path, tlen);
+-		if (!eq && tlen == strlen(ent->path))
+-			return;
+-
+-		if (eq > 0) {
+-			INIT_LIST_HEAD(&ent->ordered);
+-			list_add_tail(&ent->ordered, p);
+-			return;
+-		}
+-	}
+-	INIT_LIST_HEAD(&ent->ordered);
+-	list_add_tail(&ent->ordered, p);
+-
+-	return;
+-}
+-
+ /*
+  * Since we have to look at the entire mount tree for direct
+  * mounts (all mounts under "/") and we may have a large number
+@@ -1283,7 +1189,6 @@ struct mnt_list *tree_make_mnt_tree(cons
+ 		INIT_LIST_HEAD(&ent->list);
+ 		INIT_LIST_HEAD(&ent->entries);
+ 		INIT_LIST_HEAD(&ent->sublist);
+-		INIT_LIST_HEAD(&ent->ordered);
+ 
+ 		ent->path = malloc(len + 1);
+ 		if (!ent->path) {

@@ -1,0 +1,40 @@
+autofs-5.0.5 - fix expire race
+
+From: Ian Kent <raven@themaw.net>
+
+For multi-mounts, if a mount request comes in and does not complete
+before a concurrent expire autofs will not recognize that the tree
+has become busy which can lead to a partial expire leaving the
+multi-mount non-functional.
+---
+
+ CHANGELOG    |    1 +
+ lib/mounts.c |    5 ++++-
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -105,6 +105,7 @@
+ - fix nfs4 contacts portmap.
+ - fix get_nfs_info() can incorrectly fail.
+ - fix ipv6 proximity calculation.
++- fix expire race.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/mounts.c
++++ autofs-5.0.5/lib/mounts.c
+@@ -1664,8 +1664,11 @@ int umount_multi_triggers(struct autofs_
+ 		oe_base = oe->key + strlen(root);
+ 		left += umount_multi_triggers(ap, oe, root, oe_base);
+ 
+-		if (oe->ioctlfd != -1)
++		if (oe->ioctlfd != -1 ||
++		    is_mounted(_PROC_MOUNTS, oe->key, MNTS_REAL)) {
+ 			left++;
++			break;
++		}
+ 	}
+ 
+ 	if (left)

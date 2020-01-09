@@ -1,0 +1,22 @@
+autofs-5.0.7 - fix incorrect value reference in parse_line()
+
+From: Ian Kent <raven@themaw.net>
+
+This chack should clearly be on the contents of key not the pointer value.
+---
+ lib/defaults.c |    2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/lib/defaults.c b/lib/defaults.c
+index 1e89509..7c65387 100644
+--- a/lib/defaults.c
++++ b/lib/defaults.c
+@@ -167,7 +167,7 @@ static int parse_line(char *line, char **res, char **value)
+ 	while (*key && *key == ' ')
+ 		key++;
+ 
+-	if (!key)
++	if (!*key)
+ 		return 0;
+ 
+ 	if (!(val = strchr(key, '=')))

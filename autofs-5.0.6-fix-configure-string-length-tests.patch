@@ -1,0 +1,69 @@
+autofs-5.0.6 - fix configure string length tests
+
+From: Ian Kent <ikent@redhat.com>
+
+Checks for sss library directory were missing quotes around
+the library variable.
+---
+
+ CHANGELOG  |    1 +
+ aclocal.m4 |    6 +++---
+ configure  |    6 +++---
+ 3 files changed, 7 insertions(+), 6 deletions(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -94,6 +94,7 @@
+ - use strtok_r() in linux_version_code().
+ - fix sss wildcard match.
+ - fix dlopen() error handling in sss module.
++- fix configure string length tests for sss library.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/aclocal.m4
++++ autofs-5.0.5/aclocal.m4
+@@ -37,16 +37,16 @@ dnl
+ dnl Check if a sss autofs library exists.
+ dnl --------------------------------------------------------------------------
+ AC_DEFUN(AF_CHECK_SSS_LIB,
+-[if test -z $sssldir; then
++[if test -z "$sssldir"; then
+   AC_MSG_CHECKING(for sssd autofs library)
+   for libd in /usr/lib64 /usr/lib; do
+-    if test -z $sssldir; then
++    if test -z "$sssldir"; then
+       if test -e "$libd/sssd/modules/$2"; then
+         sssldir=$libd/sssd/modules
+       fi
+     fi
+   done
+-  if test -n $sssldir; then
++  if test -n "$sssldir"; then
+     HAVE_$1=1
+     AC_MSG_RESULT(yes)
+   else
+--- autofs-5.0.5.orig/configure
++++ autofs-5.0.5/configure
+@@ -3783,17 +3783,17 @@ else
+ fi
+ 
+ 
+-if test -z $sssldir; then
++if test -z "$sssldir"; then
+   { $as_echo "$as_me:${as_lineno-$LINENO}: checking for sssd autofs library" >&5
+ $as_echo_n "checking for sssd autofs library... " >&6; }
+   for libd in /usr/lib64 /usr/lib; do
+-    if test -z $sssldir; then
++    if test -z "$sssldir"; then
+       if test -e "$libd/sssd/modules/libsss_autofs.so"; then
+         sssldir=$libd/sssd/modules
+       fi
+     fi
+   done
+-  if test -n $sssldir; then
++  if test -n "$sssldir"; then
+     HAVE_SSS_AUTOFS=1
+     { $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
+ $as_echo "yes" >&6; }

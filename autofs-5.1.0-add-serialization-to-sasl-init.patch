@@ -1,0 +1,92 @@
+autofs-5.1.0 - add serialization to sasl init
+
+From: Ian Kent <ikent@redhat.com>
+
+Attempt to resolve crash in sasl initialization. We know that the
+initial connection calls to connect to an LDAP server are not
+thread safe and it looks like the sasl code doesn't take that into
+consideration so adding serialization with a mutex is probably a
+sensible thing to do.
+---
+ CHANGELOG             |    1 +
+ modules/lookup_ldap.c |   13 +++++++++++++
+ 2 files changed, 14 insertions(+)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -219,6 +219,7 @@
+ - cleanup options in amd_parse.c
+ - allow empty value for some map options.
+ - allow empty value in macro selectors.
++- add serialization to sasl init.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/lookup_ldap.c
++++ autofs-5.0.5/modules/lookup_ldap.c
+@@ -579,7 +579,9 @@ static int do_bind(unsigned logopt, LDAP
+ 	      ctxt->auth_required, ctxt->sasl_mech);
+ 
+ 	if (ctxt->auth_required & LDAP_NEED_AUTH) {
++		ldapinit_mutex_lock();
+ 		rv = autofs_sasl_bind(logopt, ldap, ctxt);
++		ldapinit_mutex_unlock();
+ 		debug(logopt, MODPREFIX "autofs_sasl_bind returned %d", rv);
+ 	} else {
+ 		rv = bind_ldap_simple(logopt, ldap, uri, ctxt);
+@@ -923,7 +925,9 @@ static LDAP *do_reconnect(unsigned logop
+ #ifdef WITH_SASL
+ 		/* Dispose of the sasl authentication connection and try again. */
+ 		if (!ldap && ctxt->auth_required & LDAP_NEED_AUTH) {
++			ldapinit_mutex_lock();
+ 			autofs_sasl_dispose(ctxt);
++			ldapinit_mutex_unlock();
+ 			ldap = connect_to_server(logopt, ctxt->server, ctxt);
+ 		}
+ #endif
+@@ -959,7 +963,9 @@ static LDAP *do_reconnect(unsigned logop
+ 	 * current server again before trying other servers in the list.
+ 	 */
+ 	if (!ldap && ctxt->auth_required & LDAP_NEED_AUTH) {
++		ldapinit_mutex_lock();
+ 		autofs_sasl_dispose(ctxt);
++		ldapinit_mutex_unlock();
+ 		ldap = connect_to_server(logopt, ctxt->uri->uri, ctxt);
+ 	}
+ #endif
+@@ -970,7 +976,9 @@ static LDAP *do_reconnect(unsigned logop
+ 
+ find_server:
+ #ifdef WITH_SASL
++	ldapinit_mutex_lock();
+ 	autofs_sasl_dispose(ctxt);
++	ldapinit_mutex_unlock();
+ #endif
+ 
+ 	/* Current server failed, try the rest or dc connection */
+@@ -1743,11 +1751,14 @@ int lookup_init(const char *mapfmt, int
+ 
+ #ifdef WITH_SASL
+ 	/* Init the sasl callbacks */
++	ldapinit_mutex_lock();
+ 	if (!autofs_sasl_client_init(LOGOPT_NONE)) {
+ 		error(LOGOPT_ANY, "failed to init sasl client");
++		ldapinit_mutex_unlock();
+ 		free_context(ctxt);
+ 		return 1;
+ 	}
++	ldapinit_mutex_unlock();
+ #endif
+ 
+ 	if (is_amd_format)
+@@ -3679,8 +3690,10 @@ int lookup_done(void *context)
+ 	struct lookup_context *ctxt = (struct lookup_context *) context;
+ 	int rv = close_parse(ctxt->parse);
+ #ifdef WITH_SASL
++	ldapinit_mutex_lock();
+ 	autofs_sasl_dispose(ctxt);
+ 	autofs_sasl_done();
++	ldapinit_mutex_unlock();
+ #endif
+ 	free_context(ctxt);
+ 	return rv;

@@ -1,0 +1,46 @@
+autofs-5.1.0 - force disable browse mode for amd format maps
+
+From: Ian Kent <ikent@redhat.com>
+
+As in am-utils amd format maps using autofs file system don't support
+the browse option and in autofs they don't work properly if it is used.
+
+This might be implemented later but for now forcefully disable it.
+---
+ CHANGELOG              |    1 +
+ lib/master_parse.y     |    2 ++
+ modules/mount_autofs.c |    2 ++
+ 3 files changed, 5 insertions(+)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -236,6 +236,7 @@
+ - fix some out of order evaluations in parse_amd.c.
+ - fix copy and paste error in dup_defaults_entry().
+ - add mutex call return check in defaults.c.
++- force disable browse mode for amd format maps.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/master_parse.y
++++ autofs-5.0.5/lib/master_parse.y
+@@ -810,6 +810,8 @@ int master_parse_entry(const char *buffe
+ 			logopt = LOGOPT_DEBUG;
+ 		else if (loglevel <= LOG_INFO && loglevel > LOG_ERR)
+ 			logopt = LOGOPT_VERBOSE;
++		/* amd mounts don't support browse mode */
++		ghost = 0;
+ 	}
+ 
+ 
+--- autofs-5.0.5.orig/modules/mount_autofs.c
++++ autofs-5.0.5/modules/mount_autofs.c
+@@ -261,6 +261,8 @@ int mount_mount(struct autofs_point *ap,
+ 			nap->pref = am_entry->pref;
+ 			am_entry->pref = NULL;
+ 		}
++		/* amd mounts don't support browse mode */
++		nap->flags &= ~MOUNT_FLAG_GHOST;
+ 	}
+ 
+ 	if (handle_mounts_startup_cond_init(&suc)) {

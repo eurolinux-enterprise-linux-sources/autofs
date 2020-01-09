@@ -1,0 +1,99 @@
+autofs-5.0.6 - report map not read when debug logging
+
+From: Ian Kent <ikent@redhat.com>
+
+When a map read is called automount will report that is is reading the
+map when debug logging is set. If a map read is not actually needed the
+lookup module read map function should also report that it didn't need
+to read the map.
+---
+
+ CHANGELOG                |    1 +
+ modules/lookup_hosts.c   |    4 +++-
+ modules/lookup_ldap.c    |    4 +++-
+ modules/lookup_nisplus.c |    4 +++-
+ modules/lookup_sss.c     |    4 +++-
+ modules/lookup_yp.c      |    4 +++-
+ 6 files changed, 16 insertions(+), 5 deletions(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -98,6 +98,7 @@
+ - add nobind option.
+ - update ->timeout() function to not return timeout.
+ - move timeout to map_source (allow per direct map timeout).
++- report map not read when debug logging.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/lookup_hosts.c
++++ autofs-5.0.5/modules/lookup_hosts.c
+@@ -94,8 +94,10 @@ int lookup_read_map(struct autofs_point
+ 	 * reading the map. We always need to read the whole map for
+ 	 * direct mounts in order to mount the triggers.
+ 	 */
+-	if (!(ap->flags & MOUNT_FLAG_GHOST) && ap->type != LKP_DIRECT)
++	if (!(ap->flags & MOUNT_FLAG_GHOST) && ap->type != LKP_DIRECT) {
++		debug(ap->logopt, "map read not needed, so not done");
+ 		return NSS_STATUS_SUCCESS;
++	}
+ 
+ 	mc = source->mc;
+ 
+--- autofs-5.0.5.orig/modules/lookup_ldap.c
++++ autofs-5.0.5/modules/lookup_ldap.c
+@@ -2329,8 +2329,10 @@ static int read_one_map(struct autofs_po
+ 	 * reading the map. We always need to read the whole map for
+ 	 * direct mounts in order to mount the triggers.
+ 	 */
+-	if (!(ap->flags & MOUNT_FLAG_GHOST) && ap->type != LKP_DIRECT)
++	if (!(ap->flags & MOUNT_FLAG_GHOST) && ap->type != LKP_DIRECT) {
++		debug(ap->logopt, "map read not needed, so not done");
+ 		return NSS_STATUS_SUCCESS;
++	}
+ 
+ 	sp.ap = ap;
+ 	sp.age = age;
+--- autofs-5.0.5.orig/modules/lookup_nisplus.c
++++ autofs-5.0.5/modules/lookup_nisplus.c
+@@ -185,8 +185,10 @@ int lookup_read_map(struct autofs_point
+ 	 * reading the map. We always need to read the whole map for
+ 	 * direct mounts in order to mount the triggers.
+ 	 */
+-	if (!(ap->flags & MOUNT_FLAG_GHOST) && ap->type != LKP_DIRECT)
++	if (!(ap->flags & MOUNT_FLAG_GHOST) && ap->type != LKP_DIRECT) {
++		debug(ap->logopt, "map read not needed, so not done");
+ 		return NSS_STATUS_SUCCESS;
++	}
+ 
+ 	mc = source->mc;
+ 
+--- autofs-5.0.5.orig/modules/lookup_sss.c
++++ autofs-5.0.5/modules/lookup_sss.c
+@@ -275,8 +275,10 @@ int lookup_read_map(struct autofs_point
+ 	 * reading the map. We always need to read the whole map for
+ 	 * direct mounts in order to mount the triggers.
+ 	 */
+-	if (!(ap->flags & MOUNT_FLAG_GHOST) && ap->type != LKP_DIRECT)
++	if (!(ap->flags & MOUNT_FLAG_GHOST) && ap->type != LKP_DIRECT) {
++		debug(ap->logopt, "map read not needed, so not done");
+ 		return NSS_STATUS_SUCCESS;
++	}
+ 
+ 	if (!setautomntent(ap->logopt, ctxt, ctxt->mapname, &sss_ctxt))
+ 		return NSS_STATUS_UNAVAIL;
+--- autofs-5.0.5.orig/modules/lookup_yp.c
++++ autofs-5.0.5/modules/lookup_yp.c
+@@ -327,8 +327,10 @@ int lookup_read_map(struct autofs_point
+ 	 * reading the map. We always need to read the whole map for
+ 	 * direct mounts in order to mount the triggers.
+ 	 */
+-	if (!(ap->flags & MOUNT_FLAG_GHOST) && ap->type != LKP_DIRECT)
++	if (!(ap->flags & MOUNT_FLAG_GHOST) && ap->type != LKP_DIRECT) {
++		debug(ap->logopt, "map read not needed, so not done");
+ 		return NSS_STATUS_SUCCESS;
++	}
+ 
+ 	ypcb_data.ap = ap;
+ 	ypcb_data.source = source;

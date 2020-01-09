@@ -1,0 +1,87 @@
+autofs-5.1.2 - update and add README for old autofs schema
+
+From: Ian Kent <raven@themaw.net>
+
+The distribution file samples/autofs.schema is very old and is
+incorrect.
+
+This schema was added to the discribution long ago when it was
+not clear what schema to use for Linux autofs information.
+
+The schema was updated (at least to have consistent OIDs) somewhere
+along the line but the autofs distribution copy was never updated.
+The schema has now been updated in autofs but it is not recommended
+for use as the schema for autofs map information.
+
+The rfc2307 or, preferably the, rfc2307bis schema is the recommened
+schema to use.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG                 |    1 +
+ README.autofs-schema      |   22 ++++++++++++++++++++++
+ samples/autofs.schema.new |   23 +++++++++++++++++++++++
+ 3 files changed, 46 insertions(+)
+ create mode 100644 README.autofs-schema
+
+--- /dev/null
++++ autofs-5.0.5/README.autofs-schema
+@@ -0,0 +1,22 @@
++autofs schema
++=============
++
++The distribution file samples/autofs.schema is very old and is
++incorrect.
++
++This schema was added to the discribution long ago when it was
++not clear what schema to use for Linux autofs information.
++
++The schema was corrected somewhere along the line but the autofs
++distribution copy was never updated. The schema has now been
++updated but it is not recommended for use as the schema for autofs
++map information.
++
++The rfc2307 or, preferably the, rfc2307bis schema is the recommened
++schema to use.
++
++Note: Upstream the schema file was updated but in RHEL-6 the old
++schema file has been left in place and the updated schema file
++add as autofs.schema.new.
++
++Ian
+--- /dev/null
++++ autofs-5.0.5/samples/autofs.schema.new
+@@ -0,0 +1,23 @@
++# Depends upon core.schema and cosine.schema
++
++# OID Base is 1.3.6.1.4.1.2312.4
++#
++# Attribute types are under 1.3.6.1.4.1.2312.4.1
++# Object classes are under 1.3.6.1.4.1.2312.4.2
++# Syntaxes are under 1.3.6.1.4.1.2312.4.3
++
++# Attribute Type Definitions
++
++attributetype ( 1.3.6.1.4.1.2312.4.1.2 NAME 'automountInformation'
++	DESC 'Information used by the autofs automounter'
++	EQUALITY caseExactMatch
++	SYNTAX 1.3.6.1.4.1.1466.115.121.1.26 SINGLE-VALUE )
++
++objectclass ( 1.3.6.1.4.1.2312.4.2.3 NAME 'automount' SUP top STRUCTURAL
++	DESC 'An entry in an automounter map'
++	MUST ( cn $ automountInformation $ objectclass )
++	MAY ( description ) )
++
++objectclass ( 1.3.6.1.4.1.2312.4.2.2 NAME 'automountMap' SUP top STRUCTURAL
++	DESC 'An group of related automount objects'
++	MUST ( ou ) )
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -295,6 +295,7 @@
+ - fix handle_mounts() termination condition check.
+ - wait for master map available at start.
+ - add master read wait option.
++- update and add README for old autofs schema.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------

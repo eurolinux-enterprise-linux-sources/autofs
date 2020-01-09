@@ -1,0 +1,24 @@
+autofs-5.0.7 - add null check in read_one()
+
+From: Ian Kent <raven@themaw.net>
+
+The pointter p shouldn't be null here but add a chack anyway.
+---
+ modules/lookup_file.c |    6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+--- autofs-5.0.5.orig/modules/lookup_file.c
++++ autofs-5.0.5/modules/lookup_file.c
+@@ -289,8 +289,10 @@ static int read_one(unsigned logopt, FIL
+ 				if (gotten == got_real || gotten == getting)
+ 					goto got_it;
+ 			} else if (mapent_len < MAPENT_MAX_LEN) {
+-				mapent_len++;
+-				*(p++) = ch;
++				if (p) {
++					mapent_len++;
++					*(p++) = ch;
++				}
+ 				nch = getc(f);
+ 				if (nch == EOF &&
+ 				   (gotten == got_real || gotten == getting))

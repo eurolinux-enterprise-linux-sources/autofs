@@ -1,0 +1,85 @@
+autofs-5.0.6 - teach automount about sss source
+
+From: Ian Kent <raven@themaw.net>
+
+Add parser and conditional checks to automount to handle sss source.
+Note, the parsing probably needs more work, both for master map entries
+and map entries, to attempt to narrow invalid map names passed down to
+lower level modules. For now we have to just handle these failures in
+the lookup module.
+---
+
+ CHANGELOG           |    1 +
+ daemon/lookup.c     |    3 ++-
+ lib/master_tok.l    |    2 +-
+ lib/nss_parse.y     |    6 ++++--
+ modules/parse_sun.c |    2 +-
+ 5 files changed, 9 insertions(+), 5 deletions(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -75,6 +75,7 @@
+ - fix ipv6 rpc calls.
+ - fix ipv6 configure check.
+ - add sss lookup module.
++- teach automount about sss source.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/daemon/lookup.c
++++ autofs-5.0.5/daemon/lookup.c
+@@ -173,7 +173,8 @@ int lookup_nss_read_master(struct master
+ 			    !strncmp(name, "nis:", 4) ||
+ 			    !strncmp(name, "nisplus:", 8) ||
+ 			    !strncmp(name, "ldap:", 5) ||
+-			    !strncmp(name, "ldaps:", 6)) {
++			    !strncmp(name, "ldaps:", 6) ||
++			    !strncmp(name, "sss:", 4)) {
+ 				strncpy(source, name, tmp - name);
+ 
+ 				/*
+--- autofs-5.0.5.orig/lib/master_tok.l
++++ autofs-5.0.5/lib/master_tok.l
+@@ -118,7 +118,7 @@ DNNAMESTR2	([[:alnum:]_.\-]+)
+ INTMAP		(-hosts|-null)
+ MULTI		((multi)(,(sun|hesiod))?(:{OPTWS}|{WS}))
+ MULTISEP	([\-]{2}[[:blank:]]+)
+-MTYPE		((file|program|yp|nis|nisplus|ldap|ldaps|hesiod|userdir)(,(sun|hesiod))?(:{OPTWS}|{WS}))
++MTYPE		((file|program|sss|yp|nis|nisplus|ldap|ldaps|hesiod|userdir)(,(sun|hesiod))?(:{OPTWS}|{WS}))
+ 
+ 
+ OPTTOUT		(-t{OPTWS}|-t{OPTWS}={OPTWS}|--timeout{OPTWS}|--timeout{OPTWS}={OPTWS})
+--- autofs-5.0.5.orig/lib/nss_parse.y
++++ autofs-5.0.5/lib/nss_parse.y
+@@ -82,7 +82,8 @@ nss_source: SOURCE
+ {
+ 	if (!strcmp($1, "files") || !strcmp($1, "yp") ||
+ 	    !strcmp($1, "nis") || !strcmp($1, "ldap") ||
+-	    !strcmp($1, "nisplus") || !strcmp($1, "hesiod"))
++	    !strcmp($1, "nisplus") || !strcmp($1, "hesiod") ||
++	    !strcmp($1, "sss"))
+ 		src = add_source(nss_list, $1);
+ 	else
+ 		nss_ignore($1);
+@@ -92,7 +93,8 @@ nss_source: SOURCE
+ 
+ 	if (!strcmp($1, "files") || !strcmp($1, "yp") ||
+ 	    !strcmp($1, "nis") || !strcmp($1, "ldap") ||
+-	    !strcmp($1, "nisplus") || !strcmp($1, "hesiod")) {
++	    !strcmp($1, "nisplus") || !strcmp($1, "hesiod") ||
++	    !strcmp($1, "sss")) {
+ 		src = add_source(nss_list, $1);
+ 		for (a = 0; a < NSS_STATUS_MAX; a++) {
+ 			if (act[a].action != NSS_ACTION_UNKNOWN) {
+--- autofs-5.0.5.orig/modules/parse_sun.c
++++ autofs-5.0.5/modules/parse_sun.c
+@@ -880,7 +880,7 @@ static int validate_location(unsigned in
+ 		    !strncmp(ptr, "file:", 5) || !strncmp(ptr, "yp:", 3) ||
+ 		    !strncmp(ptr, "nis:", 4) || !strncmp(ptr, "nisplus:", 8) ||
+ 		    !strncmp(ptr, "ldap:", 5) || !strncmp(ptr, "ldaps:", 6) ||
+-		    !strncmp(ptr, "dir:", 4))
++		    !strncmp(ptr, "sss:", 4) || !strncmp(ptr, "dir:", 4))
+ 			return 1;
+ 		error(logopt,
+ 		      "expected colon delimeter not found in location %s",

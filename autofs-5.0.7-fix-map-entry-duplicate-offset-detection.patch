@@ -1,0 +1,33 @@
+autofs-5.0.7 - fix map entry duplicate offset detection
+
+From: Ian Kent <raven@themaw.net>
+
+Recent changes broke the detection of duplicate offsets in map entries.
+---
+
+ CHANGELOG   |    1 +
+ lib/cache.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -115,6 +115,7 @@
+ - fix offset directory removal.
+ - fix null map entry order handling.
+ - allow non root user to check status.
++- fix map entry duplicate offset detection.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/cache.c
++++ autofs-5.0.5/lib/cache.c
+@@ -659,7 +659,7 @@ int cache_update_offset(struct mapent_ca
+ 
+ 	me = cache_lookup_distinct(mc, key);
+ 	if (me && me->age == age) {
+-		if (me->multi != owner)
++		if (me->multi == owner)
+ 			return CHE_DUPLICATE;
+ 	}
+ 

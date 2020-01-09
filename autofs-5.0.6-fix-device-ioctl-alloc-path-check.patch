@@ -1,0 +1,37 @@
+autofs-5.0.6 - fix devce ioctl alloc path check
+
+From: Ian Kent <ikent@redhat.com>
+
+The errno error should be set in alloc_dev_ioctl_path() if the passed
+in path in NULL.
+---
+
+ CHANGELOG           |    1 +
+ lib/dev-ioctl-lib.c |    4 +++-
+ 2 files changed, 4 insertions(+), 1 deletion(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -110,6 +110,7 @@
+ - fix umount recovery of busy direct mount.
+ - fix offset mount point directory removal.
+ - fix remount of multi mount.
++- fix devce ioctl alloc path check.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/dev-ioctl-lib.c
++++ autofs-5.0.5/lib/dev-ioctl-lib.c
+@@ -270,8 +270,10 @@ static struct autofs_dev_ioctl *alloc_de
+ 	struct autofs_dev_ioctl *ioctl;
+ 	size_t size, p_len;
+ 
+-	if (!path)
++	if (!path) {
++		errno = EINVAL;
+ 		return NULL;
++	}
+ 
+ 	p_len = strlen(path);
+ 	size = sizeof(struct autofs_dev_ioctl) + p_len + 1;

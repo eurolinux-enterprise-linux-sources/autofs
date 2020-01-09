@@ -1,0 +1,90 @@
+autofs-5.0.7 - fix get_nfs_info() probe
+
+From: Ian Kent <ikent@redhat.com>
+
+A recent contributed patch series changed the behaviour of server
+probing to use port specification in the same way as mount.nfs(8).
+
+Unfortunately, if NFSv2 only is to be probed and the NFS port
+needs to be obtained, the probe fails unconditionally because
+no rpc client has yet been created.
+---
+ CHANGELOG            |    1 +
+ modules/replicated.c |   31 +++++++++++++++++++------------
+ 2 files changed, 20 insertions(+), 12 deletions(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -140,6 +140,7 @@
+ - fix fix wildcard multi map regression.
+ - only probe specific nfs version if requested.
+ - expire thread use pending mutex.
++- fix get_nfs_info() probe.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/replicated.c
++++ autofs-5.0.5/modules/replicated.c
+@@ -451,15 +451,15 @@ static unsigned int get_nfs_info(unsigne
+ 
+ 	parms.pm_prog = NFS_PROGRAM;
+ 	rpc_info->proto = proto;
+-
+-	if (!(version & NFS4_REQUESTED))
+-		goto v3_ver;
+-
+ 	if (port < 0)
+ 		rpc_info->port = NFS_PORT;
+ 	else if (port > 0)
+ 		rpc_info->port = port;
+-	else {
++
++	if (!(version & NFS4_REQUESTED))
++		goto v3_ver;
++
++	if (!port) {
+ 		status = rpc_portmap_getclient(pm_info,
+ 				host->name, host->addr, host->addr_len,
+ 				proto, RPC_CLOSE_DEFAULT);
+@@ -519,7 +519,7 @@ v3_ver:
+ 	if (!(version & NFS3_REQUESTED))
+ 		goto v2_ver;
+ 
+-	if (port <= 0 && !(version & NFS4_REQUESTED && port == 0)) {
++	if (!port && !pm_info->client) {
+ 		status = rpc_portmap_getclient(pm_info,
+ 				host->name, host->addr, host->addr_len,
+ 				proto, RPC_CLOSE_DEFAULT);
+@@ -530,9 +530,7 @@ v3_ver:
+ 			goto done_ver;
+ 	}
+ 
+-	if (port > 0)
+-		rpc_info->port = port;
+-	else {
++	if (!port) {
+ 		parms.pm_prot = rpc_info->proto;
+ 		parms.pm_vers = NFS3_VERSION;
+ 		status = rpc_portmap_getport(pm_info, &parms, &rpc_info->port);
+@@ -578,9 +576,18 @@ v2_ver:
+ 	if (!(version & NFS2_REQUESTED))
+ 		goto done_ver;
+ 
+-	if (port > 0)
+-		rpc_info->port = port;
+-	else {
++	if (!port && !pm_info->client) {
++		status = rpc_portmap_getclient(pm_info,
++				host->name, host->addr, host->addr_len,
++				proto, RPC_CLOSE_DEFAULT);
++		if (status == -EHOSTUNREACH) {
++			supported = status;
++			goto done_ver;
++		} else if (status)
++			goto done_ver;
++	}
++
++	if (!port) {
+ 		parms.pm_prot = rpc_info->proto;
+ 		parms.pm_vers = NFS2_VERSION;
+ 		status = rpc_portmap_getport(pm_info, &parms, &rpc_info->port);

@@ -1,0 +1,33 @@
+autofs-5.0.6 - ignore duplicate exports in auto.net
+
+From: Paul Smith <pds at us.ibm.com>
+
+
+---
+
+ CHANGELOG        |    1 +
+ samples/auto.net |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -78,6 +78,7 @@
+ - teach automount about sss source.
+ - fix fix map source check in file lookup.
+ - fix init script usage message.
++- ignore duplicate exports in auto.net.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/samples/auto.net
++++ autofs-5.0.5/samples/auto.net
+@@ -35,7 +35,7 @@ done
+ # Newer distributions get this right
+ SHOWMOUNT="$SMNT --no-headers -e $key"
+ 
+-$SHOWMOUNT | LC_ALL=C sort -k 1 | \
++$SHOWMOUNT | LC_ALL=C cut -d' ' -f1 | LC_ALL=C sort -u | \
+ 	awk -v key="$key" -v opts="$opts" -- '
+ 	BEGIN	{ ORS=""; first=1 }
+ 		{ if (first) { print opts; first=0 }; print " \\\n\t" $1, key ":" $1 }

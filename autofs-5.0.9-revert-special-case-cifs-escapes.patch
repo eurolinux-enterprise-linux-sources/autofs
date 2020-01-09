@@ -1,0 +1,102 @@
+autofs-5.0.9 - revert special case cifs escapes
+
+From: Ian Kent <ikent@redhat.com>
+
+The patch this reverts added an additional dquote on the mount location
+to revolve "\"s but this causes inconsistent quoting between the lookup
+key and the mount location when it is substituted using the &.
+
+As described in the original patch:
+"Since "\" is a valid seperator for cifs shares it can't be used to escape
+characters in the share name passed to mount.cifs. So we have no choice
+but to require that the seperator we use is "/" and de-quote the string
+before sending it to mount.cifs."
+
+We do need to require that the seperator "/" is used which alone should
+eliminate the need for an additional dequote and expect that invalid
+share name mounts will fail.
+---
+ CHANGELOG               |    1 +
+ modules/mount_generic.c |   36 ++++++------------------------------
+ 2 files changed, 7 insertions(+), 30 deletions(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -278,6 +278,7 @@
+ - add configuration option to use fqdn in mounts.
+ - fix out of order call in program map lookup.
+ - fix lsb service name in init script.
++- revert special case cifs escapes.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/modules/mount_generic.c
++++ autofs-5.0.5/modules/mount_generic.c
+@@ -44,7 +44,6 @@ int mount_mount(struct autofs_point *ap,
+ {
+ 	char fullpath[PATH_MAX];
+ 	char buf[MAX_ERR_BUF];
+-	char *loc;
+ 	int err;
+ 	int len, status, existed = 1;
+ 
+@@ -80,44 +79,22 @@ int mount_mount(struct autofs_point *ap,
+ 	if (!status)
+ 		existed = 0;
+ 
+-	/*
+-	 * Special case quoting for cifs share names.
+-	 *
+-	 * Since "\" is a valid seperator for cifs shares it can't be
+-	 * used to escape characters in the share name passed to
+-	 * mount.cifs. So we have no choice but to require that the
+-	 * seperator we use is "/" and de-quote the string before
+-	 * sending it to mount.cifs.
+-	 */
+-	loc = NULL;
+-	if (strcmp(fstype, "cifs"))
+-		loc = strdup(what);
+-	else
+-		loc = dequote(what, strlen(what), ap->logopt);
+-	if (!loc) {
+-		error(ap->logopt,
+-		      MODPREFIX "failed to alloc buffer for mount location");
+-		return 1;
+-	}
+-
+ 	if (options && options[0]) {
+ 		debug(ap->logopt,
+ 		      MODPREFIX "calling mount -t %s " SLOPPY "-o %s %s %s",
+-		      fstype, options, loc, fullpath);
++		      fstype, options, what, fullpath);
+ 
+ 		err = spawn_mount(ap->logopt, "-t", fstype,
+-			     SLOPPYOPT "-o", options, loc, fullpath, NULL);
++			     SLOPPYOPT "-o", options, what, fullpath, NULL);
+ 	} else {
+ 		debug(ap->logopt, MODPREFIX "calling mount -t %s %s %s",
+-		      fstype, loc, fullpath);
+-		err = spawn_mount(ap->logopt, "-t", fstype, loc, fullpath, NULL);
++		      fstype, what, fullpath);
++		err = spawn_mount(ap->logopt, "-t", fstype, what, fullpath, NULL);
+ 	}
+ 
+ 	if (err) {
+ 		info(ap->logopt, MODPREFIX "failed to mount %s (type %s) on %s",
+-		     loc, fstype, fullpath);
+-
+-		free(loc);
++		     what, fstype, fullpath);
+ 
+ 		if (ap->type != LKP_INDIRECT)
+ 			return 1;
+@@ -128,8 +105,7 @@ int mount_mount(struct autofs_point *ap,
+ 		return 1;
+ 	} else {
+ 		info(ap->logopt, MODPREFIX "mounted %s type %s on %s",
+-		     loc, fstype, fullpath);
+-		free(loc);
++		     what, fstype, fullpath);
+ 		return 0;
+ 	}
+ }

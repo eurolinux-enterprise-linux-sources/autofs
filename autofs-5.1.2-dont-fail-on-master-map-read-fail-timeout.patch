@@ -1,0 +1,45 @@
+autofs-5.1.2 - dont exit on master map read fail timeout
+
+From: Ian Kent <raven@themaw.net>
+
+If there is a persistent master map read failure autofs should
+continue on after the configured retry wait, as it would have
+done previously.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |   12 ++++++++----
+ 2 files changed, 9 insertions(+), 4 deletions(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -299,6 +299,7 @@
+ - work around sss startup delay.
+ - add sss master map wait config option.
+ - fix included master map not found return.
++- dont exit on master map read fail timeout.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/daemon/automount.c
++++ autofs-5.0.5/daemon/automount.c
+@@ -2472,10 +2472,14 @@ int main(int argc, char *argv[])
+ 		 * error.
+ 		 */
+ 		if (!do_master_read_master(master_list, master_wait)) {
+-			logerr("%s: failed to read master map!", program);
+-			master_kill(master_list);
+-			release_flag_file();
+-			exit(3);
++			logmsg("%s: warning: could not read at least one "
++				"map source after waiting, continuing ...",
++				 program);
++			/*
++			 * Failed to read master map, continue with what
++			 * we have anyway.
++			 */
++			master_read_master(master_list, age, 1);
+ 		}
+ 	}
+ 

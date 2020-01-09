@@ -1,0 +1,498 @@
+autofs-5.0.6 - add hup signal handling to hosts map
+
+From: Ian Kent <ikent@redhat.com>
+
+Add HUP signal handling to the internal hosts lookup module.
+---
+
+ CHANGELOG              |    1 
+ daemon/direct.c        |    4 -
+ include/mounts.h       |    1 
+ lib/mounts.c           |  162 ++++++++++++++++++++++++++++++++++++++++++++++++-
+ man/auto.master.5.in   |    5 +
+ man/autofs.5           |    8 +-
+ modules/lookup_hosts.c |   97 ++++++++++++++++++++++++-----
+ modules/parse_sun.c    |    9 ++
+ 8 files changed, 262 insertions(+), 25 deletions(-)
+
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -111,6 +111,7 @@
+ - fix offset mount point directory removal.
+ - fix remount of multi mount.
+ - fix devce ioctl alloc path check.
++- add hup signal handling to hosts map.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/daemon/direct.c
++++ autofs-5.0.5/daemon/direct.c
+@@ -655,7 +655,9 @@ int mount_autofs_offset(struct autofs_po
+ 		ret = try_remount(ap, me, t_offset);
+ 		if (ret == 1)
+ 			return MOUNT_OFFSET_OK;
+-		return MOUNT_OFFSET_FAIL;
++		/* Offset mount not found, fall thru and try to mount it */
++		if (!(ret == -1 && errno == ENOENT))
++			return MOUNT_OFFSET_FAIL;
+ 	} else {
+ /*
+ 		if (is_mounted(_PROC_MOUNTS, me->key, MNTS_AUTOFS)) {
+--- autofs-5.0.5.orig/include/mounts.h
++++ autofs-5.0.5/include/mounts.h
+@@ -125,5 +125,6 @@ int try_remount(struct autofs_point *, s
+ int umount_ent(struct autofs_point *, const char *);
+ int mount_multi_triggers(struct autofs_point *, struct mapent *, const char *, unsigned int, const char *);
+ int umount_multi_triggers(struct autofs_point *, struct mapent *, char *, const char *);
++int clean_stale_multi_triggers(struct autofs_point *, struct mapent *, char *, const char *);
+ 
+ #endif
+--- autofs-5.0.5.orig/lib/mounts.c
++++ autofs-5.0.5/lib/mounts.c
+@@ -1403,6 +1403,7 @@ static int remount_active_mount(struct a
+ 
+ 	/* Re-reading the map, set timeout and return */
+ 	if (ap->state == ST_READMAP) {
++		debug(ap->logopt, "already mounted, update timeout");
+ 		ops->timeout(ap->logopt, fd, timeout);
+ 		ops->close(ap->logopt, fd);
+ 		return REMOUNT_READ_MAP;
+@@ -1517,7 +1518,9 @@ int try_remount(struct autofs_point *ap,
+ 	 * record that in the mount point struct. Otherwise we're
+ 	 * re-reading the map.
+ 	*/
+-	if (ret == REMOUNT_SUCCESS || ret == REMOUNT_READ_MAP) {
++	if (ret == REMOUNT_READ_MAP)
++		return 1;
++	else if (ret == REMOUNT_SUCCESS) {
+ 		if (fd != -1) {
+ 			if (type == t_indirect)
+ 				ap->ioctlfd = fd;
+@@ -1748,5 +1751,162 @@ int umount_multi_triggers(struct autofs_
+ 	}
+ 
+ 	return left;
++}
++
++int clean_stale_multi_triggers(struct autofs_point *ap,
++			       struct mapent *me, char *top, const char *base)
++{
++	char *root;
++	char mm_top[PATH_MAX + 1];
++	char path[PATH_MAX + 1];
++	char buf[MAX_ERR_BUF];
++	char *offset;
++	struct mapent *oe;
++	struct list_head *mm_root, *pos;
++	const char o_root[] = "/";
++	const char *mm_base;
++	int left, start;
++	time_t age;
++
++	if (top)
++		root = top;
++	else {
++		if (!strchr(me->multi->key, '/'))
++			/* Indirect multi-mount root */
++			/* sprintf okay - if it's mounted, it's
++			 * PATH_MAX or less bytes */
++			sprintf(mm_top, "%s/%s", ap->path, me->multi->key);
++		else
++			strcpy(mm_top, me->multi->key);
++		root = mm_top;
++	}
++
++	left = 0;
++	start = strlen(root);
++
++	mm_root = &me->multi->multi_list;
++
++	if (!base)
++		mm_base = o_root;
++	else
++		mm_base = base;
++
++	pos = NULL;
++	offset = path;
++	age = me->multi->age;
++
++	while ((offset = cache_get_offset(mm_base, offset, start, mm_root, &pos))) {
++		char *oe_base;
++		char *key;
++		int ret;
++
++		oe = cache_lookup_offset(mm_base, offset, start, &me->multi_list);
++		/* root offset is a special case */
++		if (!oe || !oe->mapent || (strlen(oe->key) - start) == 1)
++			continue;
++
++		/* Check for and umount stale subtree offsets */
++		oe_base = oe->key + strlen(root);
++		ret = clean_stale_multi_triggers(ap, oe, root, oe_base);
++		left =+ ret;
++		if (ret)
++			continue;
++
++		if (oe->age == age)
++			continue;
++
++		/*
++		 * If an offset that has an active mount has been removed
++		 * from the multi-mount we don't want to attempt to trigger
++		 * mounts for it. Obviously this is because it has been
++		 * removed, but less obvious is the potential strange
++		 * behaviour that can result if we do try and mount it
++		 * again after it's been expired. For example, if an NFS
++		 * file system is no longer exported and is later umounted
++		 * it can be mounted again without any error message but
++		 * shows as an empty directory. That's going to confuse
++		 * people for sure.
++		 *
++		 * If the mount cannot be umounted (the process is now
++		 * using a stale mount) the offset needs to be invalidated
++		 * so no further mounts will be attempted but the offset
++		 * cache entry must remain so expires can continue to
++		 * attempt to umount it. If the mount can be umounted and
++		 * the offset is removed, at least for NFS we will get
++		 * ESTALE errors when attempting list the directory.
++		 */
++		if (oe->ioctlfd != -1 ||
++		    is_mounted(_PROC_MOUNTS, oe->key, MNTS_REAL)) {
++			if (umount_ent(ap, oe->key)) {
++				debug(ap->logopt,
++				      "offset %s has active mount, invalidate",
++				      oe->key);
++				if (oe->mapent) {
++					free(oe->mapent);
++					oe->mapent = NULL;
++				}
++				left++;
++				continue;
++			}
++		}
++
++		key = strdup(oe->key);
++		if (!key) {
++	                char *estr = strerror_r(errno, buf, MAX_ERR_BUF);
++        	        error(ap->logopt, "malloc: %s", estr);
++			left++;
++			continue;
++		}
++
++		debug(ap->logopt, "umount offset %s", oe->key);
++
++		if (umount_autofs_offset(ap, oe)) {
++			warn(ap->logopt, "failed to umount offset %s", key);
++			left++;
++		} else {
++			struct stat st;
++
++			/* Mount point not ours to delete ? */
++			if (!(oe->flags & MOUNT_FLAG_DIR_CREATED)) {
++				debug(ap->logopt, "delete offset key %s", key);
++				if (cache_delete_offset(oe->mc, key) == CHE_FAIL)
++					error(ap->logopt,
++					     "failed to delete offset key %s", key);
++				free(key);
++				continue;
++			}
++
++			/*
++			 * An error due to partial directory removal is
++			 * ok so only try and remount the offset if the
++			 * actual mount point still exists.
++			 */
++			ret = rmdir_path(ap, oe->key, ap->dev);
++			if (ret == -1 && !stat(oe->key, &st)) {
++				ret = do_mount_autofs_offset(ap, oe, root, offset);
++				if (ret) {
++					left++;
++					free(key);
++					continue;
++				}
++				/*
++				 * Fall through if the trigger can't be mounted
++				 * again, since there is no offset there can't
++				 * be any mount requests so remove the map
++				 * entry from the cache. There's now a dead
++				 * offset mount, but what else can we do ....
++				 */
++			}
++
++			debug(ap->logopt, "delete offset key %s", key);
++
++			if (cache_delete_offset(oe->mc, key) == CHE_FAIL)
++				error(ap->logopt,
++				     "failed to delete offset key %s", key);
++		}
++		free(key);
++	}
++
++	return left;
+ }
+ 
+--- autofs-5.0.5.orig/man/auto.master.5.in
++++ autofs-5.0.5/man/auto.master.5.in
+@@ -212,7 +212,10 @@ set default log level "none", "verbose"
+ .SH BUILTIN MAP -hosts
+ If "-hosts" is given as the map then accessing a key under the mount point
+ which corresponds to a hostname will allow access to the exports of that
+-host.
++host. The hosts map cannot be dynamically updated and requires a HUP signal
++to be sent to the daemon for it to check hosts for an update. Due to possible
++hierarchic dependencies within a mount tree, it might not be completely
++updated during the HUP signal processing.
+ .P
+ For example, with an entry in the master map of
+ .nh
+--- autofs-5.0.5.orig/man/autofs.5
++++ autofs-5.0.5/man/autofs.5
+@@ -13,10 +13,10 @@ These maps describe how file systems bel
+ map format; if another map format is specified (e.g. \fBhesiod\fP),
+ this documentation does not apply.
+ 
+-Indirect maps can be changed on the fly and the automouter will recognize
+-those changes on the next operation it performs on that map. Direct maps
+-require a HUP signal be sent to the daemon to refresh their contents as does
+-the master map.
++Indirect maps, except for the internal hosts map, can be changed on the fly
++and the automouter will recognize those changes on the next operation it
++performs on that map. Direct maps require a HUP signal be sent to the
++daemon to refresh their contents as does the master map.
+ .SH "FORMAT"
+ This is a description of the text file format.  Other methods of specifying
+ these files may exist.  All empty lines or lines beginning with # are
+--- autofs-5.0.5.orig/modules/lookup_hosts.c
++++ autofs-5.0.5/modules/lookup_hosts.c
+@@ -80,10 +80,11 @@ int lookup_read_master(struct master *ma
+ 
+ static char *get_exports(struct autofs_point *ap, const char *host)
+ {
+-	char *mapent = NULL;
++	char buf[MAX_ERR_BUF];
++	char *mapent;
+ 	exports exp;
+ 
+-	debug(ap->logopt, MODPREFIX "fetchng export list for %s", name);
++	debug(ap->logopt, MODPREFIX "fetchng export list for %s", host);
+ 
+ 	exp = rpc_get_exports(host, 10, 0, RPC_CLOSE_NOLINGER);
+ 
+@@ -92,20 +93,20 @@ static char *get_exports(struct autofs_p
+ 		if (mapent) {
+ 			int len = strlen(mapent) + 1;
+ 
+-			len += strlen(name) + 2*(strlen(exp->ex_dir) + 2) + 3;
++			len += strlen(host) + 2*(strlen(exp->ex_dir) + 2) + 3;
+ 			mapent = realloc(mapent, len);
+ 			if (!mapent) {
+ 				char *estr;
+ 				estr = strerror_r(errno, buf, MAX_ERR_BUF);
+ 				error(ap->logopt, MODPREFIX "malloc: %s", estr);
+ 				rpc_exports_free(exp);
+-				return NSS_STATUS_UNAVAIL;
++				return NULL;
+ 			}
+ 			strcat(mapent, " \"");
+ 			strcat(mapent, exp->ex_dir);
+ 			strcat(mapent, "\"");
+ 		} else {
+-			int len = 2*(strlen(exp->ex_dir) + 2) + strlen(name) + 3;
++			int len = 2*(strlen(exp->ex_dir) + 2) + strlen(host) + 3;
+ 
+ 			mapent = malloc(len);
+ 			if (!mapent) {
+@@ -113,14 +114,14 @@ static char *get_exports(struct autofs_p
+ 				estr = strerror_r(errno, buf, MAX_ERR_BUF);
+ 				error(ap->logopt, MODPREFIX "malloc: %s", estr);
+ 				rpc_exports_free(exp);
+-				return NSS_STATUS_UNAVAIL;
++				return NULL;
+ 			}
+ 			strcpy(mapent, "\"");
+ 			strcat(mapent, exp->ex_dir);
+ 			strcat(mapent, "\"");
+ 		}
+ 		strcat(mapent, " \"");
+-		strcat(mapent, name);
++		strcat(mapent, host);
+ 		strcat(mapent, ":");
+ 		strcat(mapent, exp->ex_dir);
+ 		strcat(mapent, "\"");
+@@ -130,14 +131,14 @@ static char *get_exports(struct autofs_p
+ 	rpc_exports_free(exp);
+ 
+ 	if (!mapent)
+-		error(ap->logopt, "exports lookup failed for %s", name);
++		error(ap->logopt, MODPREFIX "exports lookup failed for %s", host);
+ 
+ 	return mapent;
+ }
+ 
+-static int do_parse_mount(struct autofs_point *ap,
++static int do_parse_mount(struct autofs_point *ap, struct map_source *source,
+ 			  const char *name, int name_len, char *mapent,
+-			  void *context)
++			  struct lookup_context *ctxt)
+ {
+ 	int ret;
+ 
+@@ -166,8 +167,68 @@ static int do_parse_mount(struct autofs_
+ 	return NSS_STATUS_SUCCESS;
+ }
+ 
++static int update_hosts_mounts(struct autofs_point *ap,
++			       struct map_source *source, time_t age,
++			       struct lookup_context *ctxt)
++{
++	struct mapent_cache *mc;
++	struct mapent *me;
++	char *mapent;
++	int ret;
++
++	mc = source->mc;
++
++	pthread_cleanup_push(cache_lock_cleanup, mc);
++	cache_writelock(mc);
++	me = cache_lookup_first(mc);
++	while (me) {
++		/* Hosts map entry not yet expanded or already expired */
++		if (!me->multi)
++			goto next;
++
++		debug(ap->logopt, MODPREFIX "get list of exports for %s", me->key);
++
++		mapent = get_exports(ap, me->key);
++		if (mapent) {
++			cache_update(mc, source, me->key, mapent, age);
++			free(mapent);
++		}
++next:
++		me = cache_lookup_next(mc, me);
++	}
++	pthread_cleanup_pop(1);
++
++	pthread_cleanup_push(cache_lock_cleanup, mc);
++	cache_readlock(mc);
++	me = cache_lookup_first(mc);
++	while (me) {
++		/*
++		 * Hosts map entry not yet expanded, already expired
++		 * or not the base of the tree
++		 */
++		if (!me->multi || me->multi != me)
++			goto cont;
++
++		debug(ap->logopt, MODPREFIX
++		      "attempt to update exports for exports for %s", me->key);
++
++		master_source_current_wait(ap->entry);
++		ap->entry->current = source;
++		ap->flags |= MOUNT_FLAG_REMOUNT;
++		ret = ctxt->parse->parse_mount(ap, me->key, strlen(me->key),
++					       me->mapent, ctxt->parse->context);
++		ap->flags &= ~MOUNT_FLAG_REMOUNT;
++cont:
++		me = cache_lookup_next(mc, me);
++	}
++	pthread_cleanup_pop(1);
++
++	return NSS_STATUS_SUCCESS;
++}
++
+ int lookup_read_map(struct autofs_point *ap, time_t age, void *context)
+ {
++	struct lookup_context *ctxt = (struct lookup_context *) context;
+ 	struct map_source *source;
+ 	struct mapent_cache *mc;
+ 	struct hostent *host;
+@@ -177,18 +238,23 @@ int lookup_read_map(struct autofs_point
+ 	ap->entry->current = NULL;
+ 	master_source_current_signal(ap->entry);
+ 
++	mc = source->mc;
++
++	debug(ap->logopt, MODPREFIX "read hosts map");
++
+ 	/*
+ 	 * If we don't need to create directories then there's no use
+ 	 * reading the map. We always need to read the whole map for
+ 	 * direct mounts in order to mount the triggers.
+ 	 */
+ 	if (!(ap->flags & MOUNT_FLAG_GHOST) && ap->type != LKP_DIRECT) {
+-		debug(ap->logopt, "map read not needed, so not done");
++		debug(ap->logopt, MODPREFIX
++		      "map not browsable, update existing host entries only");
++		update_hosts_mounts(ap, source, age, ctxt);
++		source->age = age;
+ 		return NSS_STATUS_SUCCESS;
+ 	}
+ 
+-	mc = source->mc;
+-
+ 	status = pthread_mutex_lock(&hostent_mutex);
+ 	if (status) {
+ 		error(ap->logopt, MODPREFIX "failed to lock hostent mutex");
+@@ -209,6 +275,7 @@ int lookup_read_map(struct autofs_point
+ 	if (status)
+ 		error(ap->logopt, MODPREFIX "failed to unlock hostent mutex");
+ 
++	update_hosts_mounts(ap, source, age, ctxt);
+ 	source->age = age;
+ 
+ 	return NSS_STATUS_SUCCESS;
+@@ -220,11 +287,9 @@ int lookup_mount(struct autofs_point *ap
+ 	struct map_source *source;
+ 	struct mapent_cache *mc;
+ 	struct mapent *me;
+-	char buf[MAX_ERR_BUF];
+ 	char *mapent = NULL;
+ 	int mapent_len;
+ 	time_t now = time(NULL);
+-	exports exp;
+ 	int ret;
+ 
+ 	source = ap->entry->current;
+@@ -320,7 +385,7 @@ done:
+ 		cache_unlock(mc);
+ 	}
+ 
+-	ret = do_parse_mount(ap, name, name_len, mapent, ctxt->parse->context);
++	ret = do_parse_mount(ap, source, name, name_len, mapent, ctxt);
+ 
+ 	free(mapent);
+ 
+--- autofs-5.0.5.orig/modules/parse_sun.c
++++ autofs-5.0.5/modules/parse_sun.c
+@@ -1355,7 +1355,7 @@ int parse_mount(struct autofs_point *ap,
+ 	if (check_is_multi(p)) {
+ 		char *m_root = NULL;
+ 		int m_root_len;
+-		time_t age = time(NULL);
++		time_t age;
+ 		int l;
+ 
+ 		/* If name starts with "/" it's a direct mount */
+@@ -1399,6 +1399,8 @@ int parse_mount(struct autofs_point *ap,
+ 			return 1;
+ 		}
+ 
++		age = me->age;
++
+ 		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cur_state);
+ 		cache_multi_writelock(me);
+ 		/* It's a multi-mount; deal with it */
+@@ -1472,8 +1474,11 @@ int parse_mount(struct autofs_point *ap,
+ 
+ 		/*
+ 		 * We've got the ordered list of multi-mount entries so go
+-		 * through and set the parent entry of each
++		 * through and remove any stale entries if this is the top
++		 * of the multi-mount and set the parent entry of each.
+ 		 */
++		if (me == me->multi)
++			clean_stale_multi_triggers(ap, me, NULL, NULL);
+ 		cache_set_parents(me);
+ 
+ 		rv = mount_subtree(ap, me, name, NULL, options, ctxt);

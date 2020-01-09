@@ -1,0 +1,35 @@
+autofs-5.1.0 - fix leak in get_network_proximity()
+
+From: Ian Kent <raven@themaw.net>
+
+Fix variable net not freed after use in get_network_proximity().
+---
+ CHANGELOG        |    1 +
+ lib/parse_subs.c |    5 +++--
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -227,6 +227,7 @@
+ - fix memory leak in conf_amd_get_log_options().
+ - fix signed comparison in inet_fill_net().
+ - fix buffer size checks in get_network_proximity().
++- fix leak in get_network_proximity().
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/lib/parse_subs.c
++++ autofs-5.0.5/lib/parse_subs.c
+@@ -446,9 +446,10 @@ unsigned int get_network_proximity(const
+ 		return PROXIMITY_ERROR;
+ 
+ 	net = get_network_number(name);
+-	if (net)
++	if (net) {
+ 		strcpy(name_or_num, net);
+-	else {
++		free(net);
++	} else {
+ 		char this[NI_MAXHOST + 1];
+ 		char *mask;
+ 

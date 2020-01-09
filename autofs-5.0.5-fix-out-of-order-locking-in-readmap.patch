@@ -1,0 +1,60 @@
+autofs-5.0.5 - fix out of order locking in readmap
+
+From: Ian Kent <raven@themaw.net>
+
+When re-reading the master map and a mount lookup for a particular map
+entry arrives at the same time a map source is being added to the map
+entry and a map entry re-read is also initiated at the same time an
+out of order mutex locking bug which results in a hang.
+---
+
+ lib/master.c |    8 ++------
+ 1 file changed, 2 insertions(+), 6 deletions(-)
+
+
+--- autofs-5.0.5.orig/lib/master.c
++++ autofs-5.0.5/lib/master.c
+@@ -646,8 +646,6 @@ struct master_mapent *master_find_mapent
+ {
+ 	struct list_head *head, *p;
+ 
+-	master_mutex_lock();
+-
+ 	head = &master->mounts;
+ 	list_for_each(p, head) {
+ 		struct master_mapent *entry;
+@@ -660,8 +658,6 @@ struct master_mapent *master_find_mapent
+ 		}
+ 	}
+ 
+-	master_mutex_unlock();
+-
+ 	return NULL;
+ }
+ 
+@@ -738,9 +734,7 @@ struct master_mapent *master_new_mapent(
+ 
+ void master_add_mapent(struct master *master, struct master_mapent *entry)
+ {
+-	master_mutex_lock();
+ 	list_add_tail(&entry->list, &master->mounts);
+-	master_mutex_unlock();
+ 	return;
+ }
+ 
+@@ -847,6 +841,7 @@ int master_read_master(struct master *ma
+ 	 * We need to clear and re-populate the null map entry cache
+ 	 * before alowing anyone else to use it.
+ 	 */
++	master_mutex_lock();
+ 	if (master->nc) {
+ 		cache_writelock(master->nc);
+ 		nc = master->nc;
+@@ -865,6 +860,7 @@ int master_read_master(struct master *ma
+ 	master_init_scan();
+ 	lookup_nss_read_master(master, age);
+ 	cache_unlock(nc);
++	master_mutex_unlock();
+ 
+ 	master_mount_mounts(master, age, readall);
+ 
