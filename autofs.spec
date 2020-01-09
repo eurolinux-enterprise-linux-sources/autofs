@@ -8,7 +8,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.0.7
-Release: 83%{?dist}
+Release: 99%{?dist}
 Epoch: 1
 License: GPLv2+
 Group: System Environment/Daemons
@@ -456,9 +456,27 @@ Patch836: autofs-5.1.4-fix-prefix-option-handling-in-expand_entry.patch
 Patch837: autofs-5.1.4-fix-sublink-option-not-set-from-defaults.patch
 Patch838: autofs-5.1.4-fix-error-return-in-do_nfs_mount.patch
 
+Patch839: autofs-5.1.1-fix-create_client-RPC-client-handling.patch
+Patch840: autofs-5.1.4-dont-allow-trailing-slash-in-master-map-mount-points.patch
+Patch841: autofs-5.1.4-fix-fd-leak-in-rpc_do_create_client.patch
+Patch842: autofs-5.1.4-add-man-page-note-about-extra-slashes-in-paths.patch
+Patch843: autofs-5.1.4-add-units-After-line-to-include-statd-service.patch
+Patch844: autofs-5.1.4-use-systemd-sd_notify-at-startup.patch
+Patch845: autofs-5.1.4-fix-update_negative_cache-map-source-usage.patch
+Patch846: autofs-5.1.4-mark-removed-cache-entry-negative.patch
+Patch847: autofs-5.1.3-remove-some-redundant-rpc-library-code.patch
+Patch848: autofs-5.1.3-add-port-parameter-to-rpc_ping.patch
+Patch849: autofs-5.1.3-dont-probe-NFSv2-by-default.patch
+Patch850: autofs-5.1.3-add-version-parameter-to-rpc_ping.patch
+Patch851: autofs-5.1.4-set-bind-mount-as-propagation-slave.patch
+Patch852: autofs-5.1.4-add-master-map-pseudo-options-for-mount-propagation.patch
+Patch853: autofs-5.1.4-fix-amd-parser-opts-option-handling.patch
+Patch854: autofs-5.1.4-fix-incorrect-locking-in-sss-lookup.patch
+
 Buildroot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 %if %{with_systemd}
 BuildRequires: systemd-units
+BuildRequires: systemd-devel
 %endif
 BuildRequires: autoconf, hesiod-devel, openldap-devel, bison, flex, libxml2-devel, cyrus-sasl-devel, openssl-devel module-init-tools util-linux nfs-utils e2fsprogs libtirpc-devel
 BuildRequires: libsss_autofs
@@ -949,6 +967,23 @@ echo %{version}-%{release} > .version
 %patch837 -p1
 %patch838 -p1
 
+%patch839 -p1
+%patch840 -p1
+%patch841 -p1
+%patch842 -p1
+%patch843 -p1
+%patch844 -p1
+%patch845 -p1
+%patch846 -p1
+%patch847 -p1
+%patch848 -p1
+%patch849 -p1
+%patch850 -p1
+%patch851 -p1
+%patch852 -p1
+%patch853 -p1
+%patch854 -p1
+
 %build
 LDFLAGS=-Wl,-z,now
 %configure --disable-mount-locking \
@@ -1045,6 +1080,94 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
+* Wed Sep 19 2018 Ian Kent <ikent@redhat.com> - 5.0.7-98
+- bz1630189 - yum update hanging while restarting autofs
+  - fix incorrect locking in sss lookup.
+-Resolves: rhbz#1630189
+
+* Mon Sep 17 2018 Ian Kent <ikent@redhat.com> - 5.0.7-98
+- bz1627502 - after upgrading to autofs-5.0.7-83.el7.x86_64 on RHEL 7 clients,
+  amd maps /defaults key mount options are no longer working
+  - fix amd parser opts option handling.
+- Resolves: rrhbz#1627502
+
+* Mon Aug 13 2018 Ian Kent <ikent@redhat.com> - 5.0.7-97
+- bz1358887 - On Red Hat 7.x systems if you try to access local
+  filesystems using the automounter through /net then the shell
+  and mount could lock up *if* the filesystem your accessing is
+  double exported.
+  - set bind mount as propagation slave.
+  - add master map pseudo options for mount propagation.
+- Resolves: rhbz#1358887
+
+* Fri Aug 10 2018 Ian Kent <ikent@redhat.com> - 5.0.7-96
+- bz1598640 - Server availability probe broke tunneling nfs via localhost
+  - remove some redundant rpc library code.
+  - add port parameter to rpc_ping().
+  - dont probe NFSv2 by default.
+  - add version parameter to rpc_ping().
+- Resolves: rhbz#1598640
+
+* Tue Aug 07 2018 Ian Kent <ikent@redhat.com> - 5.0.7-95
+- bz1612914 - [autofs]Removed entries still can be accessed
+  - mark removed cache entry negative.
+- Resolves: rhbz#1612914
+
+* Sat Aug 04 2018 Ian Kent <ikent@redhat.com> - 5.0.7-94
+- bz1609128 - autofs reload is unable to activate new map entries,
+  it is autofs restart which shows new map entries.
+  - fix update_negative_cache() map source usage.
+- Resolves: rhbz#1609128
+
+* Thu May 24 2018 Ian Kent <ikent@redhat.com> - 5.0.7-93
+- bz1581502 - PID file never created or disappears
+  - add missing BuildRequires: systemd-devel.
+  - fix changelog entry revision.
+-Related: rhbz#1581502
+
+* Thu May 24 2018 Ian Kent <ikent@redhat.com> - 5.0.7-92
+- bz1581502 - PID file never created or disappears
+  - add units After line to include statd service.
+  - use systemd sd_notify() at startup.
+-Resolves: rhbz#1581502
+
+* Fri May 18 2018 Ian Kent <ikent@redhat.com> - 5.0.7-90
+- bz1536526 - Ignore trailing slashes at the end of executable maps
+  in auto.master config file
+  - add man page note about extra slashes in paths.
+-Related: rhbz#1536526
+
+* Mon May 14 2018 Ian Kent <ikent@redhat.com> - 5.0.7-89
+- bz1548922 - automount crashes due to segfault
+  - and fix incorrect month in changelog entries.
+-Related: rhbz#1548922
+
+* Mon May 14 2018 Ian Kent <ikent@redhat.com> - 5.0.7-88
+- bz1548922 - automount crashes due to segfault
+  - fix changelog date on previous two entries.
+-Related: rhbz#1548922
+
+* Mon May 14 2018 Ian Kent <ikent@redhat.com> - 5.0.7-87
+- bz1548922 - automount crashes due to segfault
+  - fix package revision and changelog.
+-Related: rhbz#1548922
+
+* Mon May 14 2018 Ian Kent <ikent@redhat.com> - 5.0.7-86
+- bz1548922 - automount crashes due to segfault
+  - fix fd leak in rpc_do_create_client().
+-Related: rhbz#1548922
+
+* Fri Apr 06 2018 Ian Kent <ikent@redhat.com> - 5.0.7-85
+- bz1536526 - Ignore trailing slashes at the end of executable maps
+  in auto.master config file
+  - dont allow trailing slash in master map mount points.
+-Resolves: rhbz#1536526
+
+* Fri Apr 06 2018 Ian Kent <ikent@redhat.com> - 5.0.7-84
+- bz1548922 - automount crashes due to segfault
+  - fix create_client() RPC client handling.
+-Resolves: rhbz#1548922
+
 * Fri Feb 02 2018 Ian Kent <ikent@redhat.com> - 5.0.7-83
 - bz1509043 - [RFE] "automount / amd: file system type program is not
   yet implemented"

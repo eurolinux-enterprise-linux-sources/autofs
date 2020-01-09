@@ -1,0 +1,144 @@
+autofs-5.1.3 - add version parameter to rpc_ping()
+
+From: Ian Kent <raven@themaw.net>
+
+Add an version parameter to rpc_ping() to try and avoid NFS pings
+to protocol or NFS version that isn't to be used.
+
+When the port option is specified (possibly for NFS tunneling) it's
+likely that the protocol is also specified which will reduce uneeded
+NFS ping requests. But for this to work best (with the minimum delay)
+the NFS version needs to also be specified in the NFS mount options.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 
+ include/rpc_subs.h  |    2 -
+ lib/rpc_subs.c      |   74 +++++++++++++++++++++++++++-------------------------
+ modules/mount_nfs.c |    2 -
+ 4 files changed, 42 insertions(+), 37 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -306,6 +306,7 @@
+ - remove some redundant rpc library code.
+ - add port parameter to rpc_ping().
+ - dont probe NFSv2 by default.
++- add version parameter to rpc_ping().
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/include/rpc_subs.h
++++ autofs-5.0.7/include/rpc_subs.h
+@@ -69,7 +69,7 @@ void rpc_destroy_tcp_client(struct conn_
+ int rpc_portmap_getclient(struct conn_info *, const char *, struct sockaddr *, size_t, int, unsigned int);
+ int rpc_portmap_getport(struct conn_info *, struct pmap *, unsigned short *);
+ int rpc_ping_proto(struct conn_info *);
+-int rpc_ping(const char *, int, long, long, unsigned int);
++int rpc_ping(const char *, int, unsigned int, long, long, unsigned int);
+ double elapsed(struct timeval, struct timeval);
+ const char *get_addr_string(struct sockaddr *, char *, socklen_t);
+ 
+--- autofs-5.0.7.orig/lib/rpc_subs.c
++++ autofs-5.0.7/lib/rpc_subs.c
+@@ -53,6 +53,7 @@ const rpcvers_t rpcb_version = PMAPVERS;
+ 
+ #include "mount.h"
+ #include "rpc_subs.h"
++#include "replicated.h"
+ #include "automount.h"
+ 
+ /* #define STANDALONE */
+@@ -1052,43 +1053,46 @@ static int __rpc_ping(const char *host,
+ }
+ 
+ int rpc_ping(const char *host, int port,
+-	     long seconds, long micros, unsigned int option)
++	     unsigned int version, long seconds, long micros,
++	     unsigned int option)
+ {
+-	unsigned long vers4 = NFS4_VERSION;
+-	unsigned long vers3 = NFS3_VERSION;
+-	unsigned long vers2 = NFS2_VERSION;
+-	int status;
++	int status = 0;
++
++	if ((version & NFS2_REQUESTED) && (version & TCP_REQUESTED)) {
++		status = __rpc_ping(host, NFS2_VERSION,
++				    IPPROTO_TCP, port, seconds, micros, option);
++		if (status > 0)
++			return RPC_PING_V2 | RPC_PING_TCP;
++	}
++
++	if ((version & NFS2_REQUESTED) && (version & UDP_REQUESTED)) {
++		status = __rpc_ping(host, NFS2_VERSION,
++				    IPPROTO_UDP, port, seconds, micros, option);
++		if (status > 0)
++			return RPC_PING_V2 | RPC_PING_UDP;
++	}
+ 
+-	status = __rpc_ping(host, vers2,
+-			    IPPROTO_UDP, port, seconds, micros, option);
+-	if (status > 0)
+-		return RPC_PING_V2 | RPC_PING_UDP;
+-
+-	status = __rpc_ping(host, vers3,
+-			    IPPROTO_UDP, port, seconds, micros, option);
+-	if (status > 0)
+-		return RPC_PING_V3 | RPC_PING_UDP;
+-
+-	/* UDP isn't recommended for NFSv4, don't bother checking it.
+-	status = __rpc_ping(host, vers4, IPPROTO_UDP, seconds, micros, option);
+-	if (status > 0)
+-		return RPC_PING_V4 | RPC_PING_UDP;
+-	*/
+-
+-	status = __rpc_ping(host, vers2,
+-			    IPPROTO_TCP, port, seconds, micros, option);
+-	if (status > 0)
+-		return RPC_PING_V2 | RPC_PING_TCP;
+-
+-	status = __rpc_ping(host, vers3, port,
+-			    IPPROTO_TCP, seconds, micros, option);
+-	if (status > 0)
+-		return RPC_PING_V3 | RPC_PING_TCP;
+-
+-	status = __rpc_ping(host, vers4,
+-			    IPPROTO_TCP, port, seconds, micros, option);
+-	if (status > 0)
+-		return RPC_PING_V4 | RPC_PING_TCP;
++	if ((version & NFS3_REQUESTED) && (version & TCP_REQUESTED)) {
++		status = __rpc_ping(host, NFS3_VERSION,
++				    IPPROTO_TCP, port, seconds, micros, option);
++		if (status > 0)
++			return RPC_PING_V3 | RPC_PING_TCP;
++	}
++
++	if ((version & NFS3_REQUESTED) && (version & UDP_REQUESTED)) {
++		status = __rpc_ping(host, NFS3_VERSION,
++				    IPPROTO_UDP, port, seconds, micros, option);
++		if (status > 0)
++			return RPC_PING_V3 | RPC_PING_UDP;
++	}
++
++	if (version & NFS4_REQUESTED) {
++		/* UDP isn't recommended for NFSv4, don't check it. */
++		status = __rpc_ping(host, NFS4_VERSION,
++				    IPPROTO_TCP, port, seconds, micros, option);
++		if (status > 0)
++			return RPC_PING_V4 | RPC_PING_TCP;
++	}
+ 
+ 	return status;
+ }
+--- autofs-5.0.7.orig/modules/mount_nfs.c
++++ autofs-5.0.7/modules/mount_nfs.c
+@@ -358,7 +358,7 @@ dont_probe:
+ 			char *host = this->name ? this->name : "localhost";
+ 			int ret;
+ 
+-			ret = rpc_ping(host, port, 2, 0, RPC_CLOSE_DEFAULT);
++			ret = rpc_ping(host, port, vers, 2, 0, RPC_CLOSE_DEFAULT);
+ 			if (ret <= 0)
+ 				goto next;
+ 		}

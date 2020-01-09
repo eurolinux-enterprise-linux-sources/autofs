@@ -1,0 +1,133 @@
+autofs-5.1.3 - remove some redundant rpc library code
+
+From: Ian Kent <raven@themaw.net>
+
+Remove some redundant code that was used long long ago for testing.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 
+ include/rpc_subs.h |    1 
+ lib/rpc_subs.c     |   87 -----------------------------------------------------
+ 3 files changed, 1 insertion(+), 88 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -303,6 +303,7 @@
+ - use systemd sd_notify() at startup.
+ - fix update_negative_cache() map source usage.
+ - mark removed cache entry negative.
++- remove some redundant rpc library code.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/include/rpc_subs.h
++++ autofs-5.0.7/include/rpc_subs.h
+@@ -71,7 +71,6 @@ int rpc_portmap_getport(struct conn_info
+ int rpc_ping_proto(struct conn_info *);
+ int rpc_ping(const char *, long, long, unsigned int);
+ double elapsed(struct timeval, struct timeval);
+-int rpc_time(const char *, unsigned int, unsigned int, long, long, unsigned int, double *);
+ const char *get_addr_string(struct sockaddr *, char *, socklen_t);
+ 
+ #endif
+--- autofs-5.0.7.orig/lib/rpc_subs.c
++++ autofs-5.0.7/lib/rpc_subs.c
+@@ -1090,32 +1090,6 @@ double elapsed(struct timeval start, str
+ 	return t2-t1;
+ }
+ 
+-int rpc_time(const char *host,
+-	     unsigned int ping_vers, unsigned int ping_proto,
+-	     long seconds, long micros, unsigned int option, double *result)
+-{
+-	int status;
+-	double taken;
+-	struct timeval start, end;
+-	struct timezone tz;
+-	int proto = (ping_proto & RPC_PING_UDP) ? IPPROTO_UDP : IPPROTO_TCP;
+-	unsigned long vers = ping_vers;
+-
+-	gettimeofday(&start, &tz);
+-	status = __rpc_ping(host, vers, proto, seconds, micros, option);
+-	gettimeofday(&end, &tz);
+-
+-	if (status == RPC_PING_FAIL || status < 0)
+-		return status;
+-
+-	taken = elapsed(start, end);
+-
+-	if (result != NULL)
+-		*result = taken;
+-
+-	return status;
+-}
+-
+ static int rpc_get_exports_proto(struct conn_info *info, exports *exp)
+ {
+ 	CLIENT *client;
+@@ -1288,64 +1262,3 @@ const char *get_addr_string(struct socka
+ 
+ 	return inet_ntop(sa->sa_family, addr, name, len);
+ }
+-
+-#if 0
+-#include <stdio.h>
+-
+-int main(int argc, char **argv)
+-{
+-	int ret;
+-	double res = 0.0;
+-	exports exportlist, tmp;
+-	groups grouplist;
+-	int n, maxlen;
+-
+-/*
+-	ret = rpc_ping("budgie", 10, 0, RPC_CLOSE_DEFAULT);
+-	printf("ret = %d\n", ret);
+-
+-	res = 0.0;
+-	ret = rpc_time("budgie", NFS2_VERSION, RPC_PING_TCP, 10, 0, RPC_CLOSE_DEFAULT, &res);
+-	printf("v2 tcp ret = %d, res = %f\n", ret, res);
+-
+-	res = 0.0;
+-	ret = rpc_time("budgie", NFS3_VERSION, RPC_PING_TCP, 10, 0, RPC_CLOSE_DEFAULT, &res);
+-	printf("v3 tcp ret = %d, res = %f\n", ret, res);
+-
+-	res = 0.0;
+-	ret = rpc_time("budgie", NFS2_VERSION, RPC_PING_UDP, 10, 0, RPC_CLOSE_DEFAULT, &res);
+-	printf("v2 udp ret = %d, res = %f\n", ret, res);
+-
+-	res = 0.0;
+-	ret = rpc_time("budgie", NFS3_VERSION, RPC_PING_UDP, 10, 0, RPC_CLOSE_DEFAULT, &res);
+-	printf("v3 udp ret = %d, res = %f\n", ret, res);
+-*/
+-	exportlist = rpc_get_exports("budgie", 10, 0, RPC_CLOSE_NOLINGER);
+-	exportlist = rpc_exports_prune(exportlist);
+-
+-	maxlen = 0;
+-	for (tmp = exportlist; tmp; tmp = tmp->ex_next) {
+-		if ((n = strlen(tmp->ex_dir)) > maxlen)
+-			maxlen = n;
+-	}
+-
+-	if (exportlist) {
+-		while (exportlist) {
+-			printf("%-*s ", maxlen, exportlist->ex_dir);
+-			grouplist = exportlist->ex_groups;
+-			if (grouplist) {
+-				while (grouplist) {
+-					printf("%s%s", grouplist->gr_name,
+-						grouplist->gr_next ? "," : "");
+-					grouplist = grouplist->gr_next;
+-				}
+-			}
+-			printf("\n");
+-			exportlist = exportlist->ex_next;
+-		}
+-	}
+-	rpc_exports_free(exportlist);
+-
+-	exit(0);
+-}
+-#endif
