@@ -1,0 +1,38 @@
+autofs-5.0.8 - fix lookup_nss_mount() map lookup
+
+From: Ian Kent <raven@themaw.net>
+
+A mount that may have multiple maps (direct mounts) should try each
+source and if nsswicth is used then each instance should be tried
+before moving to the next map.
+
+Moving to the next map if an nss instance is not found makes no sense.
+---
+ CHANGELOG       |    1 +
+ daemon/lookup.c |    4 +---
+ 2 files changed, 2 insertions(+), 3 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -96,6 +96,7 @@
+ - make autofs(5) consistent with auto.master(5).
+ - fix map source with type lookup.
+ - fix fix map source with type lookup.
++- fix lookup_nss_mount() map lookup.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/lookup.c
++++ autofs-5.0.7/daemon/lookup.c
+@@ -1045,10 +1045,8 @@ int lookup_nss_mount(struct autofs_point
+ 
+ 			result = lookup_map_name(this, ap, map, name, name_len);
+ 
+-			if (result == NSS_STATUS_UNKNOWN) {
+-				map = map->next;
++			if (result == NSS_STATUS_UNKNOWN)
+ 				continue;
+-			}
+ 
+ 			status = check_nss_result(this, result);
+ 			if (status >= 0) {

@@ -1,0 +1,36 @@
+autofs-5.0.7 - fix probe each nfs version in turn for singleton mounts
+
+From: Ian Kent <raven@themaw.net>
+
+If there aren't any hosts in the list returned from parse_location() make sure
+the probe checks are skipped.
+---
+ CHANGELOG           |    1 +
+ modules/mount_nfs.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/CHANGELOG b/CHANGELOG
+index 25179b1..0242c11 100644
+--- a/CHANGELOG
++++ b/CHANGELOG
+@@ -50,6 +50,7 @@
+ - fix fix map entry duplicate offset detection.
+ - probe each nfs version in turn for singleton mounts.
+ - add changlog entry for coverity fixes.
++- fix probe each nfs version in turn for singleton mounts.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+diff --git a/modules/mount_nfs.c b/modules/mount_nfs.c
+index 81ba3ca..9de8a73 100644
+--- a/modules/mount_nfs.c
++++ b/modules/mount_nfs.c
+@@ -190,7 +190,7 @@ int mount_mount(struct autofs_point *ap, const char *root, const char *name, int
+ 	 * to NFSv3 (if it can). If the NFSv4 probe fails then probe as
+ 	 * normal.
+ 	 */
+-	if (!hosts->next &&
++	if ((hosts && !hosts->next) &&
+ 	    mount_default_proto == 4 &&
+ 	    vers & NFS_VERS_MASK != 0 &&
+ 	    vers & NFS4_VERS_MASK != 0) {

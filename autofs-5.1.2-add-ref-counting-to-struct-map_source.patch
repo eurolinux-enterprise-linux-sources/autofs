@@ -1,0 +1,216 @@
+autofs-5.1.2 - add ref counting to struct map_source
+
+From: Ian Kent <raven@themaw.net>
+
+amd map format maps that are type "auto" frequently refer to the
+current map in their map entries.
+
+While this isn't a problem for relatively small maps it can be very
+wasteful for large maps and even more so for maps that have multi-
+component keys that trigger type "auto" mounts as they progress down
+the directory tree.
+
+So add a reference count in order for amd type "auto" mounts to use
+the parent map if it matches.
+
+sun format maps are much less likley to use the same map and if they
+do they are usually trivial, one line maps, so it isn't a problem.
+
+But, more importantly, sun format maps need to track recursive inclusion
+and inclusion depth for a given map source when plus map inclusion is
+used which prevents the map soucre from being shared.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG              |    1 
+ daemon/indirect.c      |    7 ++++-
+ include/master.h       |    3 ++
+ lib/master.c           |   22 +++++++++++++++++
+ modules/mount_autofs.c |   60 ++++++++++++++++++++++++++++++++-----------------
+ 5 files changed, 72 insertions(+), 21 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -223,6 +223,7 @@
+ - fix argc off by one in mount_autofs.c.
+ - fix _strncmp() usage.
+ - fix typos in README.amd-maps.
++- add ref counting to struct map_source.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/indirect.c
++++ autofs-5.0.7/daemon/indirect.c
+@@ -96,7 +96,12 @@ static int do_mount_autofs_indirect(stru
+ 	struct mnt_list *mnts;
+ 	int ret;
+ 
+-	ap->exp_runfreq = (timeout + CHECK_RATIO - 1) / CHECK_RATIO;
++	/* If the map is being shared the exp_timeout can't be inherited
++	 * from the map source since it may be different so the autofs
++	 * point exp_runfreq must have already been set.
++	 */
++	if (ap->entry->maps->ref <= 1)
++		ap->exp_runfreq = (timeout + CHECK_RATIO - 1) / CHECK_RATIO;
+ 
+ 	if (ops->version && !do_force_unlink) {
+ 		ap->flags |= MOUNT_FLAG_REMOUNT;
+--- autofs-5.0.7.orig/include/master.h
++++ autofs-5.0.7/include/master.h
+@@ -23,6 +23,7 @@
+ #define MAP_FLAG_FORMAT_AMD	0x0001
+ 
+ struct map_source {
++	unsigned int ref;
+ 	unsigned int flags;
+ 	char *type;
+ 	char *format;
+@@ -89,6 +90,8 @@ struct map_source *
+ master_add_map_source(struct master_mapent *, char *, char *, time_t, int, const char **);
+ struct map_source *
+ master_find_map_source(struct master_mapent *, const char *, const char *, int, const char **);
++struct map_source *
++master_get_map_source(struct master_mapent *, const char *, const char *, int, const char **);
+ void master_free_map_source(struct map_source *, unsigned int);
+ struct map_source *
+ master_find_source_instance(struct map_source *, const char *, const char *, int, const char **);
+--- autofs-5.0.7.orig/lib/master.c
++++ autofs-5.0.7/lib/master.c
+@@ -180,6 +180,7 @@ master_add_map_source(struct master_mape
+ 	if (!source)
+ 		return NULL;
+ 	memset(source, 0, sizeof(struct map_source));
++	source->ref = 1;
+ 
+ 	if (type) {
+ 		ntype = strdup(type);
+@@ -231,6 +232,8 @@ master_add_map_source(struct master_mape
+ 
+ 		this = __master_find_map_source(entry, type, format, argc, tmpargv);
+ 		if (this) {
++			error(entry->ap->logopt,
++			      "map source used without taking reference");
+ 			this->age = age;
+ 			master_free_map_source(source, 0);
+ 			master_source_unlock(entry);
+@@ -329,8 +332,27 @@ struct map_source *master_find_map_sourc
+ 	return source;
+ }
+ 
++struct map_source *
++master_get_map_source(struct master_mapent *entry,
++		      const char *type, const char *format,
++		      int argc, const char **argv)
++{
++	struct map_source *source = NULL;
++
++	master_source_readlock(entry);
++	source = __master_find_map_source(entry, type, format, argc, argv);
++	if (source)
++		source->ref++;
++	master_source_unlock(entry);
++
++	return source;
++}
++
+ static void __master_free_map_source(struct map_source *source, unsigned int free_cache)
+ {
++	/* instance map sources are not ref counted */
++	if (source->ref && --source->ref)
++		return;
+ 	if (source->type)
+ 		free(source->type);
+ 	if (source->format)
+--- autofs-5.0.7.orig/modules/mount_autofs.c
++++ autofs-5.0.7/modules/mount_autofs.c
+@@ -208,18 +208,37 @@ int mount_mount(struct autofs_point *ap,
+ 	}
+ 	if (info->map)
+ 		argv[0] = info->map;
++
++	if (options) {
++		p = options;
++		while ((p = strchr(p, ',')) != NULL) {
++			if (*p == ',') {
++				*p = '\0';
++				p++;
++			}
++			argv[argc++] = p;
++		}
++	}
++	argv[argc] = NULL;
++
+ 	/*
+-	 * If the parent map format is amd and the format isn't
+-	 * specified in the map entry set it from the parent map
+-	 * source.
++	 * For amd type "auto" the map is often re-used so check
++	 * if the the parent map can be used and use it if it
++	 * matches.
++	 *
++	 * Also if the parent map format is amd and the format
++	 * isn't specified in the map entry set it from the parent
++	 * map source.
+ 	 */
+-	if (!info->format && ap->entry->maps) {
++	source = NULL;
++	if (ap->entry->maps && ap->entry->maps->flags & MAP_FLAG_FORMAT_AMD) {
+ 		struct map_source *s = ap->entry->maps;
++
+ 		/*
+ 		 * For amd maps, if the format and source type aren't
+ 		 * specified try and set them from the parent.
+ 		 */
+-		if (s->flags & MAP_FLAG_FORMAT_AMD) {
++		if (!info->format) {
+ 			info->format = strdup("amd");
+ 			if (!info->format)
+ 				warn(ap->logopt, MODPREFIX
+@@ -231,23 +250,18 @@ int mount_mount(struct autofs_point *ap,
+ 					     "failed to set amd map type");
+ 			}
+ 		}
+-	}
+ 
+-	if (options) {
+-		p = options;
+-		while ((p = strchr(p, ',')) != NULL) {
+-			if (*p == ',') {
+-				*p = '\0';
+-				p++;
+-			}
+-			argv[argc++] = p;
+-		}
++		source = master_get_map_source(ap->entry,
++					       info->type, info->format,
++					       argc, argv);
++		if (source)
++			entry->maps = source;
+ 	}
+-	argv[argc] = NULL;
+ 
+-	source = master_add_map_source(entry,
+-				       info->type, info->format,
+-				       time(NULL), argc, argv);
++	if (!source)
++		source = master_add_map_source(entry,
++					       info->type, info->format,
++					       time(NULL), argc, argv);
+ 	if (!source) {
+ 		error(ap->logopt,
+ 		      MODPREFIX "failed to add map source to entry");
+@@ -256,7 +270,13 @@ int mount_mount(struct autofs_point *ap,
+ 		return 1;
+ 	}
+ 	free_map_type_info(info);
+-	source->exp_timeout = timeout;
++	/* The exp_timeout can't be inherited if the map is shared, so
++	 * the autofs point exp_runfreq must be set here.
++	 */
++	if (source->ref <= 1)
++		source->exp_timeout = timeout;
++	else
++		nap->exp_runfreq = (timeout + CHECK_RATIO - 1) / CHECK_RATIO;
+ 
+ 	mounts_mutex_lock(ap);
+ 

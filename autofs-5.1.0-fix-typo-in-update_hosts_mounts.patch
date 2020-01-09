@@ -1,0 +1,31 @@
+autofs-5.1.0 - fix typo in update_hosts_mounts()
+
+From: Ian Kent <ikent@redhat.com>
+
+Correct the stutter in the update exports message.
+---
+ CHANGELOG              |    1 +
+ modules/lookup_hosts.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -157,6 +157,7 @@
+ - clarify multiple mounts description.
+ - update man page autofs(8) for systemd.
+ - fix fix master map type check.
++- fix typo in update_hosts_mounts().
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/lookup_hosts.c
++++ autofs-5.0.7/modules/lookup_hosts.c
+@@ -214,7 +214,7 @@ next:
+ 			goto cont;
+ 
+ 		debug(ap->logopt, MODPREFIX
+-		      "attempt to update exports for exports for %s", me->key);
++		      "attempt to update exports for %s", me->key);
+ 
+ 		master_source_current_wait(ap->entry);
+ 		ap->entry->current = source;

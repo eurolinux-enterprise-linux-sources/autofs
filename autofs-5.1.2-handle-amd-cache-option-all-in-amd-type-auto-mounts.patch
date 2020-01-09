@@ -1,0 +1,121 @@
+autofs-5.1.2 - handle amd cache option all in amd type auto mounts
+
+From: Ian Kent <raven@themaw.net>
+
+In order to read in the map at mount time autofs submounts must be
+set as browasble but amd type auto mounts that have the cache:=all
+option set need to read in the map without the browse option being
+set.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG                |    1 +
+ modules/lookup_ldap.c    |   10 ++++++----
+ modules/lookup_nisplus.c |   10 ++++++----
+ modules/lookup_sss.c     |   10 ++++++----
+ modules/lookup_yp.c      |   10 ++++++----
+ modules/mount_autofs.c   |    3 +++
+ 6 files changed, 28 insertions(+), 16 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -232,6 +232,7 @@
+ - add function conf_get_map_options().
+ - capture cache option and its settings during parsing.
+ - handle map_option cache for top level mounts.
++- handle amd cache option all in amd type auto mounts.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/lookup_ldap.c
++++ autofs-5.0.7/modules/lookup_ldap.c
+@@ -2797,11 +2797,13 @@ static int read_one_map(struct autofs_po
+ 	int rv, l;
+ 
+ 	/*
+-	 * If we don't need to create directories then there's no use
+-	 * reading the map. We always need to read the whole map for
+-	 * direct mounts in order to mount the triggers.
++	 * If we don't need to create directories (or don't need
++	 * to read an amd cache:=all map) then there's no use
++	 * reading the map. We always need to read the whole map
++	 * for direct mounts in order to mount the triggers.
+ 	 */
+-	if (!(ap->flags & MOUNT_FLAG_GHOST) && ap->type != LKP_DIRECT) {
++	if (ap->type != LKP_DIRECT &&
++	    !(ap->flags & (MOUNT_FLAG_GHOST|MOUNT_FLAG_AMD_CACHE_ALL))) {
+ 		debug(ap->logopt, "map read not needed, so not done");
+ 		return NSS_STATUS_SUCCESS;
+ 	}
+--- autofs-5.0.7.orig/modules/lookup_nisplus.c
++++ autofs-5.0.7/modules/lookup_nisplus.c
+@@ -239,11 +239,13 @@ int lookup_read_map(struct autofs_point
+ 	master_source_current_signal(ap->entry);
+ 
+ 	/*
+-	 * If we don't need to create directories then there's no use
+-	 * reading the map. We always need to read the whole map for
+-	 * direct mounts in order to mount the triggers.
++	 * If we don't need to create directories (or don't need
++	 * to read an amd cache:=all map) then there's no use
++	 * reading the map. We always need to read the whole map
++	 * for direct mounts in order to mount the triggers.
+ 	 */
+-	if (!(ap->flags & MOUNT_FLAG_GHOST) && ap->type != LKP_DIRECT) {
++	if (ap->type != LKP_DIRECT &&
++	    !(ap->flags & (MOUNT_FLAG_GHOST|MOUNT_FLAG_AMD_CACHE_ALL))) {
+ 		debug(ap->logopt, "map read not needed, so not done");
+ 		return NSS_STATUS_SUCCESS;
+ 	}
+--- autofs-5.0.7.orig/modules/lookup_sss.c
++++ autofs-5.0.7/modules/lookup_sss.c
+@@ -340,11 +340,13 @@ int lookup_read_map(struct autofs_point
+ 	mc = source->mc;
+ 
+ 	/*
+-	 * If we don't need to create directories then there's no use
+-	 * reading the map. We always need to read the whole map for
+-	 * direct mounts in order to mount the triggers.
++	 * If we don't need to create directories (or don't need
++	 * to read an amd cache:=all map) then there's no use
++	 * reading the map. We always need to read the whole map
++	 * for direct mounts in order to mount the triggers.
+ 	 */
+-	if (!(ap->flags & MOUNT_FLAG_GHOST) && ap->type != LKP_DIRECT) {
++	if (ap->type != LKP_DIRECT &&
++	    !(ap->flags & (MOUNT_FLAG_GHOST|MOUNT_FLAG_AMD_CACHE_ALL))) {
+ 		debug(ap->logopt, "map read not needed, so not done");
+ 		return NSS_STATUS_SUCCESS;
+ 	}
+--- autofs-5.0.7.orig/modules/lookup_yp.c
++++ autofs-5.0.7/modules/lookup_yp.c
+@@ -401,11 +401,13 @@ int lookup_read_map(struct autofs_point
+ 	master_source_current_signal(ap->entry);
+ 
+ 	/*
+-	 * If we don't need to create directories then there's no use
+-	 * reading the map. We always need to read the whole map for
+-	 * direct mounts in order to mount the triggers.
++	 * If we don't need to create directories (or don't need
++	 * to read an amd cache:=all map) then there's no use
++	 * reading the map. We always need to read the whole map
++	 * for direct mounts in order to mount the triggers.
+ 	 */
+-	if (!(ap->flags & MOUNT_FLAG_GHOST) && ap->type != LKP_DIRECT) {
++	if (ap->type != LKP_DIRECT &&
++	    !(ap->flags & (MOUNT_FLAG_GHOST|MOUNT_FLAG_AMD_CACHE_ALL))) {
+ 		debug(ap->logopt, "map read not needed, so not done");
+ 		return NSS_STATUS_SUCCESS;
+ 	}
+--- autofs-5.0.7.orig/modules/mount_autofs.c
++++ autofs-5.0.7/modules/mount_autofs.c
+@@ -288,6 +288,9 @@ int mount_mount(struct autofs_point *ap,
+ 			nap->pref = am_entry->pref;
+ 			am_entry->pref = NULL;
+ 		}
++
++		if (am_entry->cache_opts & AMD_CACHE_OPTION_ALL)
++			nap->flags |= MOUNT_FLAG_AMD_CACHE_ALL;
+ 	}
+ 
+ 	if (handle_mounts_startup_cond_init(&suc)) {

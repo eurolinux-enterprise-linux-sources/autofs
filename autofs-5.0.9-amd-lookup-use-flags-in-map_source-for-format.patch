@@ -1,0 +1,64 @@
+autofs-5.0.9 - amd lookup use flags in map_source for format
+
+From: Ian Kent <raven@themaw.net>
+
+We will need to check the map format several times so add a flags
+field to the map_source struct so we don't need to use strcmp()
+every time.
+---
+ daemon/lookup.c  |    2 ++
+ include/master.h |    3 +++
+ lib/master.c     |    4 ++++
+ 3 files changed, 9 insertions(+)
+
+--- autofs-5.0.7.orig/daemon/lookup.c
++++ autofs-5.0.7/daemon/lookup.c
+@@ -476,6 +476,7 @@ static enum nsswitch_status read_map_sou
+ 	}
+ 
+ 	this->source[4] = '\0';
++	tmap.flags = map->flags;
+ 	tmap.type = this->source;
+ 	tmap.format = map->format;
+ 	tmap.lookup = map->lookup;
+@@ -879,6 +880,7 @@ static enum nsswitch_status lookup_map_n
+ 	}
+ 
+ 	this->source[4] = '\0';
++	tmap.flags = map->flags;
+ 	tmap.type = this->source;
+ 	tmap.format = map->format;
+ 	tmap.mc = map->mc;
+--- autofs-5.0.7.orig/include/master.h
++++ autofs-5.0.7/include/master.h
+@@ -20,7 +20,10 @@
+ #ifndef MASTER_H
+ #define MASTER_H
+ 
++#define MAP_FLAG_FORMAT_AMD	0x0001
++
+ struct map_source {
++	unsigned int flags;
+ 	char *type;
+ 	char *format;
+ 	time_t exp_timeout;		/* Timeout for expiring mounts */
+--- autofs-5.0.7.orig/lib/master.c
++++ autofs-5.0.7/lib/master.c
+@@ -178,6 +178,8 @@ master_add_map_source(struct master_mape
+ 			return NULL;
+ 		}
+ 		source->format = nformat;
++		if (!strcmp(nformat, "amd"))
++			source->flags |= MAP_FLAG_FORMAT_AMD;
+ 	}
+ 
+ 	source->age = age;
+@@ -430,6 +432,8 @@ master_add_source_instance(struct map_so
+ 			return NULL;
+ 		}
+ 		new->format = nformat;
++		if (!strcmp(nformat, "amd"))
++			new->flags |= MAP_FLAG_FORMAT_AMD;
+ 	}
+ 
+ 	new->age = age;

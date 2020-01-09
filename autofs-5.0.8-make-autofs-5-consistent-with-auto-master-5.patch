@@ -1,0 +1,167 @@
+autofs-5.0.8 - make autofs(5) consistent with auto.master(5)
+
+From: Ian Kent <raven@themaw.net>
+
+The presentation in autofs(5) isn't the same as that in auto.master(5).
+---
+ CHANGELOG            |    1 +
+ man/auto.master.5.in |   18 +++++++++++-------
+ man/autofs.5         |   41 +++++++++++++++++++++++++++--------------
+ 3 files changed, 39 insertions(+), 21 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -93,6 +93,7 @@
+ - change walk_tree() to take ap.
+ - add negative cache lookup to hesiod lookup.
+ - fix external env configure.
++- make autofs(5) consistent with auto.master(5).
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/man/auto.master.5.in
++++ autofs-5.0.7/man/auto.master.5.in
+@@ -38,14 +38,14 @@ Access to mounts in maps is governed by
+ .P
+ For direct maps the mount point is always specified as:
+ .P
+-/-
++.BR /-
+ .P
+ and the key used within the direct map is the full path to the mount point. The direct map
+ may have multiple entries in the master map.
+ .P
+ For indirect maps access is by using the path scheme:
+ .P
+-.RI / mount-point / key 
++.BR /mount-point/key
+ .P
+ where
+ .I mount-point
+@@ -57,7 +57,9 @@ map given in the entry (See
+ .P
+ Additionally, a map may be included from its source as if it were itself
+ present in the master map by including a line of the form:
+-.BR +\ [ maptype , format :] map [ options ]
++.P
++.BR + [ maptype [, format ]:] map\  [ options ]
++.P
+ and 
+ .BR automount (8)
+ will process the map according to the specification described below for
+@@ -73,14 +75,14 @@ which contains options to be applied to
+ .P
+ The format of a master map entry is:
+ .TP
+-.IR mount-point\  [ map-type [, format ]:] map\  [ options ]
++.BR mount-point\  [ map-type [, format ]:] map\  [ options ]
+ .TP
+-\fBmount-point\fP
++.B mount-point
+ Base location for the \fBautofs\fP filesystem to be mounted.  For
+ indirect maps this directory will be created (as with \fBmkdir \-p\fP)
+ and is removed when the \fBautofs\fP filesystem is umounted.
+ .TP
+-\fBmap-type\fP
++.B map-type
+ Type of map used for this mount point.  The following are
+ valid map types:
+ .RS
+@@ -133,7 +135,8 @@ for maps of types \fBfile\fP, \fBdir\fP,
+ in the case for maps of type \fByp\fP, \fBnisplus\fP, or \fBhesiod\fP or
+ the \fBdn\fP of an LDAP entry for maps of type \fBldap\fP.
+ .TP
+-\fBoptions\fP
++.B options
++.br
+ Any remaining command line arguments without leading dashes (\-) are
+ taken as options (\fI\-o\fP) to \fBmount\fP.  Arguments with leading
+ dashes are considered options for the maps.
+@@ -287,6 +290,7 @@ it will used for subsequent lookups.
+ There are three common schemas in use:
+ .TP
+ .I nisMap
++.br
+ Entries in the \fBnisMap\fP schema are \fBnisObject\fP objects in
+ the specified subtree, where the \fBcn\fP attribute is the key
+ (the wildcard key is "/"), and the \fBnisMapEntry\fP attribute
+--- autofs-5.0.7.orig/man/autofs.5
++++ autofs-5.0.7/man/autofs.5
+@@ -22,42 +22,56 @@ This is a description of the text file f
+ these files may exist.  All empty lines or lines beginning with # are
+ ignored. The basic format of one line in such maps is:
+ .P
+-.BI "key [" -options "] location"
+-
+-.SS key
++.BR key\  [ -options ]\  location
++.TP
++.B key
++.br
+ For indirect mounts this is the part of the path name between the mount point
+ and the path into the filesystem when it is mounted. Usually you can think about the
+ key as a sub-directory name below the autofs managed mount point.
+ 
+ For direct mounts this is the full path of each mount point. This map is always
+ associated with the /- mount point in the master map. 
+-
+-.SS options
++.TP
++.B options
++.br
+ Zero or more options may be given.  Options can also be given in the 
+ .B auto.master
+ file in which case both values are cumulative (this is a difference
+ from SunOS).  The options are a list of comma separated options as
+ customary for the
+ .BR mount (8)
+-command. There are two special options
+-.I -fstype=
+-used to specify a filesystem type if the filesystem is not of the default
++command.
++
++There are several special options
++.RS
++.TP
++.B -fstype=
++.br
++is used to specify a filesystem type if the filesystem is not of the default
+ NFS type.  This option is processed by the automounter and not by the mount
+ command.
+-.I -strict
++.TP
++.B -strict
++.br
+ is used to treat errors when mounting file systems as fatal. This is important when
+ multiple file systems should be mounted (`multi-mounts'). If this option
+ is given, no file system is mounted at all if at least one file system
+ can't be mounted.
+-.I -use-weight-only
++.TP
++.B -use-weight-only
++.br
+ is used to make the weight the sole factor in selecting a server when multiple
+ servers are present in a map entry.
+ and
+-.I -no-use-weight-only
++.TP
++.B -no-use-weight-only
++.br
+ can be used to negate the option if it is present in the master map entry
+ for the map but is not wanted for the given mount.
+-
+-.SS location
++.RE
++.TP
++.B location
+ The location specifies from where the file system is to be mounted.  In the
+ most cases this will be an NFS volume and the usual notation
+ .I host:pathname
+@@ -227,7 +241,6 @@ Anything else is questionable and unsupp
+ <path> host1(3),host:/blah
+ .fi
+ .RE
+-.sp
+ .SH UNSUPPORTED
+ This version of the automounter supports direct maps stored in FILE, NIS, NISPLUS
+ and LDAP only.

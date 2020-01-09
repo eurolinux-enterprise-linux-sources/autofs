@@ -1,0 +1,37 @@
+autofs-5.0.8 - fix ipv6 link local address handling
+
+From: Ian Kent <raven@themaw.net>
+
+Stop the validate_location() function from choking on link local
+ipv6 addresses.
+---
+ lib/rpc_subs.c      |    6 ++++++
+ modules/parse_sun.c |    2 +-
+ 2 files changed, 7 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/lib/rpc_subs.c
++++ autofs-5.0.7/lib/rpc_subs.c
+@@ -669,6 +669,12 @@ static int create_client(struct conn_inf
+ 			goto done;
+ 		if (ret == -EHOSTUNREACH)
+ 			goto out_close;
++		if (ret == -EINVAL) {
++			char buf[MAX_ERR_BUF];
++			char *estr = strerror_r(-ret, buf, MAX_ERR_BUF);
++			error(LOGOPT_ANY, "connect() failed: %s", estr);
++			goto out_close;
++		}
+ 
+ 		if (!info->client && fd != RPC_ANYSOCK) {
+ 			close(fd);
+--- autofs-5.0.7.orig/modules/parse_sun.c
++++ autofs-5.0.7/modules/parse_sun.c
+@@ -893,7 +893,7 @@ static int validate_location(unsigned in
+ 			    *ptr == '-' || *ptr == '.' || *ptr == '_' ||
+ 			    *ptr == ',' || *ptr == '(' || *ptr == ')' ||
+ 			    *ptr == '#' || *ptr == '@' || *ptr == ':' ||
+-			    *ptr == '[' || *ptr == ']')) {
++			    *ptr == '[' || *ptr == ']' || *ptr == '%')) {
+ 				error(logopt, "invalid character \"%c\" "
+ 				      "found in location %s", *ptr, loc);
+ 				return 0;

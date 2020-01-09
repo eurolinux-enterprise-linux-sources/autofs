@@ -1,0 +1,171 @@
+autofs-5.1.1 - add config option to suppress not found log message
+
+From: Ian Kent <raven@themaw.net>
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG                      |    1 +
+ daemon/lookup.c                |   11 +++++++++--
+ include/defaults.h             |    4 +++-
+ lib/defaults.c                 |   17 +++++++++++++++++
+ man/autofs.conf.5.in           |    7 +++++++
+ modules/lookup_hesiod.c        |    6 ++++--
+ redhat/autofs.conf.default.in  |    8 ++++++++
+ samples/autofs.conf.default.in |    8 ++++++++
+ 8 files changed, 57 insertions(+), 5 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -205,6 +205,7 @@
+ - fix typo in autofs_sasl_bind().
+ - add configuration option to use fqdn in mounts.
+ - fix use-after-free in st_queue_handler().
++- add config option to supress not found log message.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/lookup.c
++++ autofs-5.0.7/daemon/lookup.c
+@@ -1036,8 +1036,15 @@ static void update_negative_cache(struct
+ 		 */
+ 		cache_unlock(me->mc);
+ 	else {
+-		/* Notify only once after fail */
+-		logmsg("key \"%s\" not found in map source(s).", name);
++		if (!defaults_disable_not_found_message()) {
++			/* This really should be a warning but the original
++			 * request for this needed it to be unconditional.
++			 * That produces, IMHO, unnecessary noise in the log
++			 * so a configuration option has been added to provide
++			 * the ability to turn it off.
++			 */
++			logmsg("key \"%s\" not found in map source(s).", name);
++		}
+ 
+ 		/* Doesn't exist in any source, just add it somewhere */
+ 		if (source)
+--- autofs-5.0.7.orig/include/defaults.h
++++ autofs-5.0.7/include/defaults.h
+@@ -47,7 +47,8 @@
+ 
+ #define DEFAULT_MAP_HASH_TABLE_SIZE	"1024"
+ 
+-#define DEFAULT_USE_HOSTNAME_FOR_MOUNTS	"0"
++#define DEFAULT_USE_HOSTNAME_FOR_MOUNTS  "0"
++#define DEFAULT_DISABLE_NOT_FOUND_MESSAGE "0"
+ 
+ /* Config entry flags */
+ #define CONF_NONE			0x00000000
+@@ -165,6 +166,7 @@ unsigned int defaults_get_umount_wait(vo
+ const char *defaults_get_auth_conf_file(void);
+ unsigned int defaults_get_map_hash_table_size(void);
+ unsigned int defaults_use_hostname_for_mounts(void);
++unsigned int defaults_disable_not_found_message(void);
+ 
+ unsigned int conf_amd_mount_section_exists(const char *);
+ char *conf_amd_get_arch(void);
+--- autofs-5.0.7.orig/lib/defaults.c
++++ autofs-5.0.7/lib/defaults.c
+@@ -73,6 +73,7 @@
+ #define NAME_MAP_HASH_TABLE_SIZE	"map_hash_table_size"
+ 
+ #define NAME_USE_HOSTNAME_FOR_MOUNTS	"use_hostname_for_mounts"
++#define NAME_DISABLE_NOT_FOUND_MESSAGE	"disable_not_found_message"
+ 
+ #define NAME_AMD_ARCH				"arch"
+ #define NAME_AMD_AUTO_ATTRCACHE			"auto_attrcache"
+@@ -341,6 +342,11 @@ static int conf_load_autofs_defaults(voi
+ 	if (ret == CFG_FAIL)
+ 		goto error;
+ 
++	ret = conf_update(sec, NAME_DISABLE_NOT_FOUND_MESSAGE,
++			  DEFAULT_DISABLE_NOT_FOUND_MESSAGE, CONF_ENV);
++	if (ret == CFG_FAIL)
++		goto error;
++
+ 	/* LDAP_URI and SEARCH_BASE can occur multiple times */
+ 	while ((co = conf_lookup(sec, NAME_LDAP_URI)))
+ 		conf_delete(co->section, co->name);
+@@ -1717,6 +1723,17 @@ unsigned int defaults_use_hostname_for_m
+ 
+ 	return res;
+ }
++
++unsigned int defaults_disable_not_found_message(void)
++{
++	int res;
++
++	res = conf_get_yesno(autofs_gbl_sec, NAME_DISABLE_NOT_FOUND_MESSAGE);
++	if (res < 0)
++		res = atoi(DEFAULT_DISABLE_NOT_FOUND_MESSAGE);
++
++	return res;
++}
+ 
+ unsigned int conf_amd_mount_section_exists(const char *section)
+ {
+--- autofs-5.0.7.orig/man/autofs.conf.5.in
++++ autofs-5.0.7/man/autofs.conf.5.in
+@@ -129,6 +129,13 @@ name resolving to one that isn't respond
+ of attempts at a successful mount will correspond to the number of
+ addresses the host name resolves to the order will also not correspond
+ to fastest responding hosts.
++.TP
++.B disable_not_found_message
++.br
++The original request to add this log message needed it to be unconditional.
++That produces, IMHO, unnecessary noise in the log so a configuration option
++has been added to provide the ability to turn it off. The default is "no"
++to maintain the current behaviour.
+ .SS LDAP Configuration
+ .P
+ Configuration settings available are:
+--- autofs-5.0.7.orig/modules/lookup_hesiod.c
++++ autofs-5.0.7/modules/lookup_hesiod.c
+@@ -194,8 +194,10 @@ static int lookup_one(struct autofs_poin
+ 	hes_result = hesiod_resolve(ctxt->hesiod_context, key, "filsys");
+ 	if (!hes_result || !hes_result[0]) {
+ 		int err = errno;
+-		error(ap->logopt,
+-		      MODPREFIX "key \"%s\" not found in map", key);
++		if (!defaults_disable_not_found_message()) {
++			error(ap->logopt,
++			      MODPREFIX "key \"%s\" not found in map", key);
++		}
+ 		status = pthread_mutex_unlock(&hesiod_mutex);
+ 		if (status)
+ 			fatal(status);
+--- autofs-5.0.7.orig/redhat/autofs.conf.default.in
++++ autofs-5.0.7/redhat/autofs.conf.default.in
+@@ -151,6 +151,14 @@ mount_nfs_default_protocol = 4
+ #
+ #use_hostname_for_mounts = "no"
+ #
++# disable_not_found_message - The original request to add this log message
++# 			 needed it to be unconditional. That produces, IMHO,
++# 			 unnecessary noise in the log so a configuration option
++# 			 has been added to provide the ability to turn it off.
++# 			 The default is "no" to maintain the current behaviour.
++#
++#disable_not_found_message = "no"
++#
+ # Otions for the amd parser within autofs.
+ #
+ # amd configuration options that are aren't used, haven't been
+--- autofs-5.0.7.orig/samples/autofs.conf.default.in
++++ autofs-5.0.7/samples/autofs.conf.default.in
+@@ -150,6 +150,14 @@ browse_mode = no
+ #
+ #use_hostname_for_mounts = "no"
+ #
++# disable_not_found_message - The original request to add this log message
++# 			 needed it to be unconditional. That produces, IMHO,
++# 			 unnecessary noise in the log so a configuration option
++# 			 has been added to provide the ability to turn it off.
++# 			 The default is "no" to maintain the current behaviour.
++#
++#disable_not_found_message = "no"
++#
+ # Otions for the amd parser within autofs.
+ #
+ # amd configuration options that are aren't used, haven't been

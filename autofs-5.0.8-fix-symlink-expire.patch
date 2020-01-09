@@ -1,0 +1,66 @@
+autofs-5.0.8 - fix symlink expire
+
+From: Ian Kent <raven@themaw.net>
+
+The expire code uses the list of mounts to decide if additional expire
+check requests should be sent to the kernel. This doesn't take into
+account the possibility there could be symlinks that might be able to
+be expired.
+
+count_mounts() does count symlinks so use that only when working out
+how many expire requests should be sent.
+---
+ CHANGELOG         |    1 +
+ daemon/indirect.c |   22 ++++++++++------------
+ 2 files changed, 11 insertions(+), 12 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -86,6 +86,7 @@
+ - fix undefined authtype_requires_creds err if ldap enabled but without sasl.
+ - pass map_source as function paramter where possible.
+ - check for bind onto self in mount_bind.c.
++- fix symlink expire.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/indirect.c
++++ autofs-5.0.7/daemon/indirect.c
+@@ -388,6 +388,7 @@ void *expire_proc_indirect(void *arg)
+ 	struct expire_args ec;
+ 	unsigned int now;
+ 	int offsets, submnts, count;
++	int retries;
+ 	int ioctlfd, cur_state;
+ 	int status, ret, left;
+ 
+@@ -533,20 +534,17 @@ void *expire_proc_indirect(void *arg)
+ 
+ 	/*
+ 	 * If there are no more real mounts left we could still
+-	 * have some offset mounts with no '/' offset so we need to
+-	 * umount them here.
++	 * have some offset mounts with no '/' offset or symlinks
++	 * so we need to umount or unlink them here.
+ 	 */
+-	if (mnts) {
+-		int retries;
+-		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cur_state);
+-		retries = (count_mounts(ap->logopt, ap->path, ap->dev) + 1);
+-		while (retries--) {
+-			ret = ops->expire(ap->logopt, ap->ioctlfd, ap->path, now);
+-			if (ret)
+-				left++;
+-		}
+-		pthread_setcancelstate(cur_state, NULL);
++	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cur_state);
++	retries = (count_mounts(ap->logopt, ap->path, ap->dev) + 1);
++	while (retries--) {
++		ret = ops->expire(ap->logopt, ap->ioctlfd, ap->path, now);
++		if (ret)
++			left++;
+ 	}
++	pthread_setcancelstate(cur_state, NULL);
+ 	pthread_cleanup_pop(1);
+ 
+ 	count = offsets = submnts = 0;

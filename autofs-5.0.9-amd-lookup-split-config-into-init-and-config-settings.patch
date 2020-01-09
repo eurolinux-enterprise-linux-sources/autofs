@@ -1,0 +1,809 @@
+autofs-5.0.9 - amd lookup split config into init and config settings
+
+From: Ian Kent <ikent@redhat.com>
+
+Split the configuration into program and init time configuration files.
+The bulk of the configuration is now in the daemon configuration file
+in /etc/autofs.conf by default.
+
+The daemon configuration names are now lower case but in reality are
+(and have always been) case insensitive.
+
+Also, read the old configuration from the old configuration location
+after reading the new configuration to ensure that people updating
+don't get a surprize if they don't update the existing setup they
+have. Note that this means that if the old configuration isn't updated
+changes made in the new configuration will be overridden by the old.
+---
+ autofs.spec                    |    2 
+ lib/defaults.c                 |   22 ++++++
+ man/auto.master.5.in           |   39 ++++++-----
+ redhat/Makefile                |    6 -
+ redhat/autofs.conf.default.in  |  131 ++++++++++++++++++++++++++++++++++++++
+ redhat/autofs.sysconfig        |   14 ++++
+ redhat/autofs.sysconfig.in     |  138 -----------------------------------------
+ samples/Makefile               |   44 ++++++++++---
+ samples/autofs.conf.default.in |  109 +++++++++++++++-----------------
+ samples/autofs.init.conf       |   14 ++++
+ 10 files changed, 293 insertions(+), 226 deletions(-)
+ create mode 100644 redhat/autofs.conf.default.in
+ create mode 100644 redhat/autofs.sysconfig
+ delete mode 100644 redhat/autofs.sysconfig.in
+ create mode 100644 samples/autofs.init.conf
+
+--- autofs-5.0.7.orig/autofs.spec
++++ autofs-5.0.7/autofs.spec
+@@ -117,6 +117,7 @@ install -m 644 redhat/autofs.service $RP
+ install -m 755 redhat/autofs.init $RPM_BUILD_ROOT/etc/rc.d/init.d/autofs
+ %define init_file_name /etc/rc.d/init.d/autofs
+ %endif
++install -m 644 redhat/autofs.conf $RPM_BUILD_ROOT/etc/autofs.conf
+ install -m 644 redhat/autofs.sysconfig $RPM_BUILD_ROOT/etc/sysconfig/autofs
+ 
+ %clean
+@@ -176,6 +177,7 @@ fi
+ %doc CREDITS CHANGELOG INSTALL COPY* README* samples/ldap* samples/autofs.schema samples/autofs_ldap_auth.conf
+ %config %{init_file_name}
+ %config(noreplace) /etc/auto.master
++%config(noreplace) /etc/autofs.conf
+ %config(noreplace,missingok) /etc/auto.misc
+ %config(noreplace,missingok) /etc/auto.net
+ %config(noreplace,missingok) /etc/auto.smb
+--- autofs-5.0.7.orig/lib/defaults.c
++++ autofs-5.0.7/lib/defaults.c
+@@ -33,7 +33,14 @@
+ #define AUTOFS_GLOBAL_SECTION		"autofs"
+ #define AMD_GLOBAL_SECTION		"amd"
+ 
+-#define DEFAULT_CONFIG_FILE		AUTOFS_CONF_DIR "/autofs"
++/*
++ * The configuration location has changed.
++ * The name of the configuration is now autofs.conf and it is
++ * located in the same directory as the maps. AUTOFS_CONF_DIR
++ * remains pointed at the init system configuration.
++ */
++#define DEFAULT_CONFIG_FILE		AUTOFS_MAP_DIR "/autofs.conf"
++#define OLD_CONFIG_FILE			AUTOFS_CONF_DIR "/autofs"
+ #define MAX_LINE_LEN			256
+ #define MAX_SECTION_NAME		MAX_LINE_LEN
+ 
+@@ -965,6 +972,19 @@ unsigned int defaults_read_config(unsign
+ 
+ 	fclose(f);
+ 
++	/*
++	 * Try to read the old config file and override the installed
++	 * defaults in case user has a stale config following updating
++	 * to the new config file location.
++	 */
++
++	f = open_fopen_r(OLD_CONFIG_FILE);
++	if (!f)
++		goto out;
++
++	read_config(to_syslog, f, OLD_CONFIG_FILE);
++
++	fclose(f);
+ out:
+ 	pthread_mutex_unlock(&conf_mutex);
+ 	return 1;
+--- autofs-5.0.7.orig/man/auto.master.5.in
++++ autofs-5.0.7/man/auto.master.5.in
+@@ -214,44 +214,44 @@ configuration file
+ .hy
+ They are:
+ .TP
+-.B TIMEOUT
++.B timeout
+ Sets the default mount timeout in seconds. The internal program
+ default is 10 minutes, but the default installed configuration
+ overrides this and sets the timeout to 5 minutes to be consistent
+ with earlier autofs releases.
+ .TP
+-.B NEGATIVE_TIMEOUT
++.B negative_timeout
+ Set the default timeout for caching failed key lookups (program default
+ 60). If the equivalent command line option is given it will override this
+ setting.
+ .TP
+-.B MOUNT_WAIT
++.B mount_wait
+ Set the default time to wait for a response from a spawned mount(8)
+ before sending it a SIGTERM. Note that we still need to wait for the
+ RPC layer to timeout before the sub-process exits so this isn't ideal
+ but it is the best we can do. The default is to wait until mount(8)
+ returns without intervention.
+ .TP
+-.B UMOUNT_WAIT
++.B umount_wait
+ Set the default time to wait for a response from a spawned umount(8)
+ before sending it a SIGTERM. Note that we still need to wait for the
+ RPC layer to timeout before the sub-process exits so this isn't ideal
+ but it is the best we can do.
+ .TP
+-.B BROWSE_MODE
++.B browse_mode
+ Maps are browsable by default (program default "yes").
+ .TP
+-.B MOUNT_NFS_DEFAULT_PROTOCOL
++.B mount_nfs_default_protocol
+ Specify the default protocol used by mount.nfs(8) (program default 3). Since
+ we can't identify this default automatically we need to set it in the autofs
+ configuration.
+ .TP
+-.B APPEND_OPTIONS
++.B append_options
+ Determine whether global options, given on the command line or per mount
+ in the master map, are appended to map entry options or if the map entry
+ options replace the global options (program default "yes", append options).
+ .TP
+-.B LOGGING
++.B logging
+ set default log level "none", "verbose" or "debug" (program default "none").
+ .SH BUILTIN MAP -hosts
+ If "-hosts" is given as the map then accessing a key under the mount point
+@@ -317,15 +317,15 @@ values must be set, any partial schema s
+ .P
+ The configuration settings available are:
+ .TP
+-.B LDAP_TIMEOUT
++.B ldap_timeout
+ Set the network response timeout (default 8).
+ Set timeout value for the synchronous API  calls. The default is the LDAP
+ library default of an infinite timeout.
+ .TP
+-.B LDAP_NETWORK_TIMEOUT
++.B ldap_network_timeout
+ Set the network response timeout (default 8).
+ .TP
+-.B LDAP_URI
++.B ldap_uri
+ A space seperated list of server uris of the form <proto>://<server>[/]
+ where <proto> can be ldap or ldaps. The option can be given multiple times.
+ Map entries that include a server name override this option and it is then
+@@ -341,34 +341,34 @@ SRV RR lookup. The server list returned
+ according to the minimum ttl found in the SRV RR records or after one hour,
+ whichever is less.
+ .TP
+-.B SEARCH_BASE
++.B search_base
+ The base dn to use when searching for amap base dn. This entry may be
+ given multiple times and each will be checked for a map base dn in
+ the order they occur in the configuration. The search base list is read
+ at startup and whenever the daemon recieves a HUP signal.
+ .TP
+-.B MAP_OBJECT_CLASS
++.B map_object_class
+ The map object class. In the \fBnisMap\fP schema this corresponds to the class
+ \fBnisMap\fP and in the \fBautomountMap\fP schema it corresponds to the class
+ \fBautomountMap\fP.
+ .TP
+-.B ENTRY_OBJECT_CLASS
++.B entry_object_class
+ The map entry object class. In the \fBnisMap\fP schema this corresponds
+ to the class \fBnisObject\fP and in the \fBautomountMap\fP schema it
+ corresponds to the class \fBautomount\fP.
+ .TP
+-.B MAP_ATTRIBUTE
++.B map_attribute
+ The attribute used to identify the name of the map to which this
+ entry belongs.  In the \fBnisMap\fP schema this corresponds to the attribute
+ \fBnisMapName\fP and in the \fBautomountMap\fP schema it corresponds to the
+ attribute \fBou\fP or \fBautomountMapName\fP.
+ .TP
+-.B ENTRY_ATTRIBUTE
++.B entry_attribute
+ The attribute used to identify a map key. In the \fBnisMap\fP schema this
+ corresponds to the attribute \fBcn\fP and in the \fBautomountMap\fP schema
+ it corresponds to the attribute \fBautomountKey\fP.
+ .TP
+-.B VALUE_ATTRIBUTE
++.B value_attribute
+ The attribute used to identify the value of the map entry. In the \fBnisMap\fP
+ schema this corresponds to the attribute \fBnisMapEntry\fP and in the \fBautomountMap\fP
+ schema it corresponds to the attribute \fBautomountInformation\fP.
+@@ -386,6 +386,11 @@ settings.  The default location of this
+ .nh
+ .BR @@autofsmapdir@@/autofs_ldap_auth.conf .
+ .hy
++.TP
++.B auth_conf_file
++This configuration option may be used to specify an alternate location
++for the ldap authentication file
++.P
+ If this file exists it will be used to establish whether TLS or authentication
+ should be used.
+ .P
+--- autofs-5.0.7.orig/redhat/Makefile
++++ autofs-5.0.7/redhat/Makefile
+@@ -2,7 +2,7 @@
+ -include ../Makefile.conf
+ include ../Makefile.rules
+ 
+-all: autofs.init autofs.sysconfig autofs.service
++all: autofs.init autofs.conf autofs.service
+ 
+ autofs.init: autofs.init.in
+ 	sed -e "s|@@sbindir@@|$(sbindir)|g" \
+@@ -11,9 +11,9 @@ autofs.init: autofs.init.in
+ 	    -e "s|@@autofspiddir@@|$(autofspiddir)|g" \
+ 	    -e "s|@@initdir@@|$(initdir)|g" < autofs.init.in > autofs.init
+ 
+-autofs.sysconfig: autofs.sysconfig.in
++autofs.conf: autofs.conf.default.in
+ 	sed -e "s|@@autofsmapdir@@|$(autofsmapdir)|g" \
+-		< autofs.sysconfig.in > autofs.sysconfig
++		< autofs.conf.default.in > autofs.conf
+ 
+ autofs.service: ../samples/autofs.service.in
+ 	sed -e "s|@@sbindir@@|$(sbindir)|g" \
+--- /dev/null
++++ autofs-5.0.7/redhat/autofs.conf.default.in
+@@ -0,0 +1,131 @@
++#
++# Define default options for autofs.
++#
++[ autofs ]
++#
++# master_map_name - default map name for the master map.
++#
++#master_map_name = auto.master
++#
++# timeout - set the default mount timeout in secons. The internal
++#	    program default is 10 minutes, but the default installed
++#	    configuration overrides this and sets the timeout to 5
++#	    minutes to be consistent with earlier autofs releases.
++#
++timeout = 300
++#
++# negative_timeout - set the default negative timeout for
++# 		     failed mount attempts (default 60).
++#
++#negative_timeout = 60
++#
++# mount_wait - time to wait for a response from mount(8).
++# 	       Setting this timeout can cause problems when
++# 	       mount would otherwise wait for a server that
++# 	       is temporarily unavailable, such as when it's
++# 	       restarting. The default setting (-1) of waiting
++# 	       for mount(8) usually results in a wait of around
++# 	       3 minutes.
++#
++#mount_wait = -1
++#
++# umount_wait - time to wait for a response from umount(8).
++#
++#umount_wait = 12
++#
++# browse_mode - maps are browsable by default.
++#
++browse_mode = no
++#
++# mount_nfs_default_protocol - specify the default protocol used by
++# 			       mount.nfs(8). Since we can't identify
++# 			       the default automatically we need to
++# 			       set it in our configuration.
++#
++#mount_nfs_default_protocol = 3
++mount_nfs_default_protocol = 4
++#
++# append_options - append to global options instead of replace.
++#
++#append_options = yes
++#
++# logging - set default log level "none", "verbose" or "debug"
++#
++#logging = none
++#
++# Define base dn for map dn lookup.
++#
++# Define server URIs
++#
++# ldap_uri - space seperated list of server uris of the form
++# 	     <proto>://<server>[/] where <proto> can be ldap
++# 	     or ldaps. The option can be given multiple times.
++# 	     Map entries that include a server name override
++# 	     this option.
++#
++#	     This configuration option can also be used to
++#	     request autofs lookup SRV RRs for a domain of
++#	     the form <proto>:///[<domain dn>]. Note that a
++#	     trailing "/" is not allowed when using this form.
++#	     If the domain dn is not specified the dns domain
++#	     name (if any) is used to construct the domain dn
++#	     for the SRV RR lookup. The server list returned
++#	     from an SRV RR lookup is refreshed according to
++#	     the minimum ttl found in the SRV RR records or
++#	     after one hour, whichever is less.
++#
++#ldap_uri = ""
++#
++# ldap_timeout - timeout value for the synchronous API  calls
++#		  (default is LDAP library default).
++#
++#ldap_timeout = -1
++#
++# ldap_network_timeout - set the network response timeout (default 8).
++#
++#ldap_network_timeout = 8
++#
++# search_base - base dn to use for searching for map search dn.
++# 		Multiple entries can be given and they are checked
++# 		in the order they occur here.
++#
++#search_base = ""
++#
++# Define the LDAP schema to used for lookups
++#
++# If no schema is set autofs will check each of the schemas
++# below in the order given to try and locate an appropriate
++# basdn for lookups. If you want to minimize the number of
++# queries to the server set the values here.
++#
++#map_object_class = nisMap
++#entry_object_class = nisObject
++#map_attribute = nisMapName
++#entry_attribute = cn
++#value_attribute= nisMapEntry
++#
++# Other common LDAP nameing
++#
++#map_object_class = automountMap
++#entry_object_class = automount
++#map_attribute = ou
++#entry_attribute = cn
++#value_attribute= automountInformation
++#
++#map_object_class = automountMap
++#entry_object_class = automount
++#map_attribute = automountMapName
++#entry_attribute = automountKey
++#value_attribute= automountInformation
++#
++# auth_conf_file - set the default location for the SASL
++#		   authentication configuration file.
++#
++#auth_conf_file = @@autofsmapdir@@/autofs_ldap_auth.conf
++#
++# map_hash_table_size - set the map cache hash table size.
++# 			Should be a power of 2 with a ratio roughly
++# 			between 1:10 and 1:20 for each map.
++#
++#map_hash_table_size = 1024
++#
+--- /dev/null
++++ autofs-5.0.7/redhat/autofs.sysconfig
+@@ -0,0 +1,14 @@
++#
++# Init syatem options
++#
++# If the kernel supports using the autofs miscellanous device
++# and you wish to use it you must set this configuration option
++# to "yes" otherwise it will not be used.
++#
++USE_MISC_DEVICE="yes"
++#
++# Use OPTIONS to add automount(8) command line options that
++# will be used when the daemon is started.
++#
++#OPTIONS=""
++#
+--- autofs-5.0.7.orig/redhat/autofs.sysconfig.in
++++ /dev/null
+@@ -1,138 +0,0 @@
+-#
+-# Define default options for autofs.
+-#
+-# MASTER_MAP_NAME - default map name for the master map.
+-#
+-#MASTER_MAP_NAME="auto.master"
+-#
+-# TIMEOUT - set the default mount timeout in secons. The internal
+-#	    program default is 10 minutes, but the default installed
+-#	    configuration overrides this and sets the timeout to 5
+-#	    minutes to be consistent with earlier autofs releases.
+-#
+-TIMEOUT=300
+-#
+-# NEGATIVE_TIMEOUT - set the default negative timeout for
+-# 		     failed mount attempts (default 60).
+-#
+-#NEGATIVE_TIMEOUT=60
+-#
+-# MOUNT_WAIT - time to wait for a response from mount(8).
+-# 	       Setting this timeout can cause problems when
+-# 	       mount would otherwise wait for a server that
+-# 	       is temporarily unavailable, such as when it's
+-# 	       restarting. The default setting (-1) of waiting
+-# 	       for mount(8) usually results in a wait of around
+-# 	       3 minutes.
+-#
+-#MOUNT_WAIT=-1
+-#
+-# UMOUNT_WAIT - time to wait for a response from umount(8).
+-#
+-#UMOUNT_WAIT=12
+-#
+-# BROWSE_MODE - maps are browsable by default.
+-#
+-BROWSE_MODE="no"
+-#
+-# MOUNT_NFS_DEFAULT_PROTOCOL - specify the default protocol used by
+-# 			       mount.nfs(8). Since we can't identify
+-# 			       the default automatically we need to
+-# 			       set it in our configuration.
+-#
+-#MOUNT_NFS_DEFAULT_PROTOCOL=3
+-MOUNT_NFS_DEFAULT_PROTOCOL=4
+-#
+-# APPEND_OPTIONS - append to global options instead of replace.
+-#
+-#APPEND_OPTIONS="yes"
+-#
+-# LOGGING - set default log level "none", "verbose" or "debug"
+-#
+-#LOGGING="none"
+-#
+-# Define base dn for map dn lookup.
+-#
+-# Define server URIs
+-#
+-# LDAP_URI - space seperated list of server uris of the form
+-# 	     <proto>://<server>[/] where <proto> can be ldap
+-# 	     or ldaps. The option can be given multiple times.
+-# 	     Map entries that include a server name override
+-# 	     this option.
+-#
+-#	     This configuration option can also be used to
+-#	     request autofs lookup SRV RRs for a domain of
+-#	     the form <proto>:///[<domain dn>]. Note that a
+-#	     trailing "/" is not allowed when using this form.
+-#	     If the domain dn is not specified the dns domain
+-#	     name (if any) is used to construct the domain dn
+-#	     for the SRV RR lookup. The server list returned
+-#	     from an SRV RR lookup is refreshed according to
+-#	     the minimum ttl found in the SRV RR records or
+-#	     after one hour, whichever is less.
+-#
+-#LDAP_URI=""
+-#
+-# LDAP__TIMEOUT - timeout value for the synchronous API  calls
+-#		  (default is LDAP library default).
+-#
+-#LDAP_TIMEOUT=-1
+-#
+-# LDAP_NETWORK_TIMEOUT - set the network response timeout (default 8).
+-#
+-#LDAP_NETWORK_TIMEOUT=8
+-#
+-# SEARCH_BASE - base dn to use for searching for map search dn.
+-# 		Multiple entries can be given and they are checked
+-# 		in the order they occur here.
+-#
+-#SEARCH_BASE=""
+-#
+-# Define the LDAP schema to used for lookups
+-#
+-# If no schema is set autofs will check each of the schemas
+-# below in the order given to try and locate an appropriate
+-# basdn for lookups. If you want to minimize the number of
+-# queries to the server set the values here.
+-#
+-#MAP_OBJECT_CLASS="nisMap"
+-#ENTRY_OBJECT_CLASS="nisObject"
+-#MAP_ATTRIBUTE="nisMapName"
+-#ENTRY_ATTRIBUTE="cn"
+-#VALUE_ATTRIBUTE="nisMapEntry"
+-#
+-# Other common LDAP nameing
+-#
+-#MAP_OBJECT_CLASS="automountMap"
+-#ENTRY_OBJECT_CLASS="automount"
+-#MAP_ATTRIBUTE="ou"
+-#ENTRY_ATTRIBUTE="cn"
+-#VALUE_ATTRIBUTE="automountInformation"
+-#
+-#MAP_OBJECT_CLASS="automountMap"
+-#ENTRY_OBJECT_CLASS="automount"
+-#MAP_ATTRIBUTE="automountMapName"
+-#ENTRY_ATTRIBUTE="automountKey"
+-#VALUE_ATTRIBUTE="automountInformation"
+-#
+-# AUTH_CONF_FILE - set the default location for the SASL
+-#			   authentication configuration file.
+-#
+-#AUTH_CONF_FILE="@@autofsmapdir@@/autofs_ldap_auth.conf"
+-#
+-# MAP_HASH_TABLE_SIZE - set the map cache hash table size.
+-# 			Should be a power of 2 with a ratio roughly
+-# 			between 1:10 and 1:20 for each map.
+-#
+-#MAP_HASH_TABLE_SIZE=1024
+-#
+-# General global options
+-#
+-# If the kernel supports using the autofs miscellanous device
+-# and you wish to use it you must set this configuration option
+-# to "yes" otherwise it will not be used.
+-USE_MISC_DEVICE="yes"
+-#
+-#OPTIONS=""
+-#
+--- autofs-5.0.7.orig/samples/Makefile
++++ autofs-5.0.7/samples/Makefile
+@@ -4,7 +4,7 @@ include ../Makefile.rules
+ 
+ SAMPLES = auto.master auto.misc auto.net auto.smb
+ 
+-all: rc.autofs autofs.conf.default autofs.service
++all: rc.autofs autofs.conf.default autofs.init.conf autofs.service
+ 
+ rc.autofs: rc.autofs.in
+ 	sed -e "s|@@sbindir@@|$(sbindir)|g" \
+@@ -46,26 +46,52 @@ else
+    endif
+ endif
+ 
+-CONFIG = $(shell test -e $(INSTALLROOT)$(autofsconfdir)/autofs.orig || echo "-b --suffix=.orig")
+-CEXISTS = $(shell test -e $(INSTALLROOT)$(autofsconfdir)/autofs || echo "no")
++#
++# The map directory contains the main autofs configuration ...
++#
++CONFIG = $(shell test -e $(INSTALLROOT)$(autofsmapdir)/autofs.conf.orig || echo "-b --suffix=.orig")
++CEXISTS = $(shell test -e $(INSTALLROOT)$(autofsmapdir)/autofs || echo "no")
+ 
+ .PHONY: autofs.conf
+ autofs.conf: autofs.conf.default
+ 	@echo
+-	@echo "Installing autofs default configuation in $(autofsconfdir)"
++	@echo "Installing autofs default configuation in $(autofsmapdir)"
+ 	@if test -z "$(CONFIG)" ; \
+ 	then \
+ 		install -v autofs.conf.default -m 644 \
+-			$(INSTALLROOT)$(autofsconfdir)/autofs.conf.new ; \
++			$(INSTALLROOT)$(autofsmapdir)/autofs.conf.new ; \
+ 		echo "Found existing backup of configuration file." ; \
+ 		echo "Installed package default configuration file as \"autofs.conf.new\"." ; \
+ 	else \
+ 		install -v autofs.conf.default -m 644 $(CONFIG) \
+-				$(INSTALLROOT)$(autofsconfdir)/autofs ; \
+-		echo "Installed package configuration configuration as \"autofs\"." ; \
++				$(INSTALLROOT)$(autofsmapdir)/autofs.conf ; \
++		echo "Installed package default configuration as \"autofs.conf\"." ; \
+ 		if test -z "$(CEXISTS)" ; \
+ 		then \
+-			echo "Backup of existing configuration made to \"autofs.orig\"." ; \
++			echo "Backup of existing configuration made to \"autofs.conf.orig\"." ; \
++		fi ; \
++	fi
++
++CINIT = $(shell test -e $(INSTALLROOT)$(autofsconfdir)/autofs.orig || echo "-b --suffix=.orig")
++CIEXISTS = $(shell test -e $(INSTALLROOT)$(autofsconfdir)/autofs || echo "no")
++
++.PHONY: autofs.sysinit
++autofs.sysinit: autofs.init.conf
++	@echo
++	@echo "Installing autofs init configuation in $(autofsconfdir)"
++	@if test -z "$(CINIT)" ; \
++	then \
++		install -v autofs.init.conf -m 644 \
++			$(INSTALLROOT)$(autofsconfdir)/autofs.new ; \
++		echo "Found existing backup of init configuration file." ; \
++		echo "Installed package init configuration file as \"autofs.new\"." ; \
++	else \
++		install -v autofs.init.conf -m 644 $(CINIT) \
++				$(INSTALLROOT)$(autofsconfdir)/autofs ; \
++		echo "Installed package init configuration as \"autofs\"." ; \
++		if test -z "$(CIEXISTS)" ; \
++		then \
++			echo "Backup of existing init configuration made to \"autofs.orig\"." ; \
+ 		fi ; \
+ 	fi
+ 
+@@ -185,7 +211,7 @@ auto.smb:
+ 	fi
+ 
+ install: rc.autofs autofs.conf.default dirs autofs.init autofs.service \
+-		autofs.conf autofs_ldap_auth.conf $(SAMPLES)
++		autofs.conf autofs.sysinit autofs_ldap_auth.conf $(SAMPLES)
+ 	@echo
+ 
+ clean:
+--- autofs-5.0.7.orig/samples/autofs.conf.default.in
++++ autofs-5.0.7/samples/autofs.conf.default.in
+@@ -1,23 +1,25 @@
+ #
+ # Define default options for autofs.
+ #
+-# MASTER_MAP_NAME - default map name for the master map.
++[ autofs ]
+ #
+-#MASTER_MAP_NAME="auto.master"
++# master_map_name - default map name for the master map.
+ #
+-# TIMEOUT - set the default mount timeout in secons. The internal
++#master_map_name = auto.master
++#
++# timeout - set the default mount timeout in secons. The internal
+ #	    program default is 10 minutes, but the default installed
+ #	    configuration overrides this and sets the timeout to 5
+ #	    minutes to be consistent with earlier autofs releases.
+ #
+-TIMEOUT=300
++timeout = 300
+ #
+-# NEGATIVE_TIMEOUT - set the default negative timeout for
++# negative_timeout - set the default negative timeout for
+ # 		     failed mount attempts (default 60).
+ #
+-#NEGATIVE_TIMEOUT=60
++#negative_timeout = 60
+ #
+-# MOUNT_WAIT - time to wait for a response from mount(8).
++# mount_wait - time to wait for a response from mount(8).
+ # 	       Setting this timeout can cause problems when
+ # 	       mount would otherwise wait for a server that
+ # 	       is temporarily unavailable, such as when it's
+@@ -25,34 +27,36 @@ TIMEOUT=300
+ # 	       for mount(8) usually results in a wait of around
+ # 	       3 minutes.
+ #
+-#MOUNT_WAIT=-1
++#mount_wait = -1
+ #
+-# UMOUNT_WAIT - time to wait for a response from umount(8).
++# umount_wait - time to wait for a response from umount(8).
+ #
+-#UMOUNT_WAIT=12
++#umount_wait = 12
+ #
+-# BROWSE_MODE - maps are browsable by default.
++# browse_mode - maps are browsable by default.
+ #
+-BROWSE_MODE="no"
++browse_mode = no
+ #
+-# MOUNT_NFS_DEFAULT_PROTOCOL - specify the default protocol used by
++# mount_nfs_default_protocol - specify the default protocol used by
+ # 			       mount.nfs(8). Since we can't identify
+ # 			       the default automatically we need to
+ # 			       set it in our configuration.
+ #
+-#MOUNT_NFS_DEFAULT_PROTOCOL=3
++#mount_nfs_default_protocol = 3
++#
++# append_options - append to global options instead of replace.
+ #
+-# APPEND_OPTIONS - append to global options instead of replace.
++#append_options = yes
+ #
+-#APPEND_OPTIONS="yes"
++# logging - set default log level "none", "verbose" or "debug"
+ #
+-# LOGGING - set default log level "none", "verbose" or "debug"
++#logging = none
+ #
+-#LOGGING="none"
++# Define base dn for map dn lookup.
+ #
+ # Define server URIs
+ #
+-# LDAP_URI - space seperated list of server uris of the form
++# ldap_uri - space seperated list of server uris of the form
+ # 	     <proto>://<server>[/] where <proto> can be ldap
+ # 	     or ldaps. The option can be given multiple times.
+ # 	     Map entries that include a server name override
+@@ -69,24 +73,22 @@ BROWSE_MODE="no"
+ #	     the minimum ttl found in the SRV RR records or
+ #	     after one hour, whichever is less.
+ #
+-#LDAP_URI=""
++#ldap_uri = ""
+ #
+-# LDAP__TIMEOUT - timeout value for the synchronous API  calls
++# ldap_timeout - timeout value for the synchronous API  calls
+ #		  (default is LDAP library default).
+ #
+-#LDAP_TIMEOUT=-1
+-#
+-# LDAP_NETWORK_TIMEOUT - set the network response timeout (default 8).
++#ldap_timeout = -1
+ #
+-#LDAP_NETWORK_TIMEOUT=8
++# ldap_network_timeout - set the network response timeout (default 8).
+ #
+-# Define base dn for map dn lookup.
++#ldap_network_timeout = 8
+ #
+-# SEARCH_BASE - base dn to use for searching for map search dn.
++# search_base - base dn to use for searching for map search dn.
+ # 		Multiple entries can be given and they are checked
+ # 		in the order they occur here.
+ #
+-#SEARCH_BASE=""
++#search_base = ""
+ #
+ # Define the LDAP schema to used for lookups
+ #
+@@ -95,43 +97,34 @@ BROWSE_MODE="no"
+ # basdn for lookups. If you want to minimize the number of
+ # queries to the server set the values here.
+ #
+-#MAP_OBJECT_CLASS="nisMap"
+-#ENTRY_OBJECT_CLASS="nisObject"
+-#MAP_ATTRIBUTE="nisMapName"
+-#ENTRY_ATTRIBUTE="cn"
+-#VALUE_ATTRIBUTE="nisMapEntry"
++#map_object_class = nisMap
++#entry_object_class = nisObject
++#map_attribute = nisMapName
++#entry_attribute = cn
++#value_attribute= nisMapEntry
+ #
+ # Other common LDAP nameing
+ #
+-#MAP_OBJECT_CLASS="automountMap"
+-#ENTRY_OBJECT_CLASS="automount"
+-#MAP_ATTRIBUTE="ou"
+-#ENTRY_ATTRIBUTE="cn"
+-#VALUE_ATTRIBUTE="automountInformation"
+-#
+-#MAP_OBJECT_CLASS="automountMap"
+-#ENTRY_OBJECT_CLASS="automount"
+-#MAP_ATTRIBUTE="automountMapName"
+-#ENTRY_ATTRIBUTE="automountKey"
+-#VALUE_ATTRIBUTE="automountInformation"
++#map_object_class = automountMap
++#entry_object_class = automount
++#map_attribute = ou
++#entry_attribute = cn
++#value_attribute= automountInformation
++#
++#map_object_class = automountMap
++#entry_object_class = automount
++#map_attribute = automountMapName
++#entry_attribute = automountKey
++#value_attribute= automountInformation
+ #
+-# AUTH_CONF_FILE - set the default location for the SASL
+-#			   authentication configuration file.
++# auth_conf_file - set the default location for the SASL
++#		   authentication configuration file.
+ #
+-#AUTH_CONF_FILE="@@autofsmapdir@@/autofs_ldap_auth.conf"
++#auth_conf_file = @@autofsmapdir@@/autofs_ldap_auth.conf
+ #
+-# MAP_HASH_TABLE_SIZE - set the map cache hash table size.
++# map_hash_table_size - set the map cache hash table size.
+ # 			Should be a power of 2 with a ratio roughly
+ # 			between 1:10 and 1:20 for each map.
+ #
+-#MAP_HASH_TABLE_SIZE=1024
+-#
+-# General global options
+-#
+-# If the kernel supports using the autofs miscellanous device
+-# and you wish to use it you must set this configuration option
+-# to "yes" otherwise it will not be used.
+-USE_MISC_DEVICE="yes"
+-#
+-#OPTIONS=""
++#map_hash_table_size = 1024
+ #
+--- /dev/null
++++ autofs-5.0.7/samples/autofs.init.conf
+@@ -0,0 +1,14 @@
++#
++# Init syatem options
++#
++# If the kernel supports using the autofs miscellanous device
++# and you wish to use it you must set this configuration option
++# to "yes" otherwise it will not be used.
++#
++USE_MISC_DEVICE="yes"
++#
++# Use OPTIONS to add automount(8) command line options that
++# will be used when the daemon is started.
++#
++#OPTIONS=""
++#

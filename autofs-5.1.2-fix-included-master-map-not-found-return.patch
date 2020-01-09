@@ -1,0 +1,89 @@
+autofs-5.1.2 - fix included master map not found return
+
+From: Ian Kent <raven@themaw.net>
+
+When retrying the master map read at startup a not found return is needed
+when there is no map rather than an unknown or unavailable for the retry
+logic to work.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG             |    1 +
+ daemon/lookup.c       |    6 ++++--
+ modules/lookup_file.c |   18 ++++++++++++------
+ 3 files changed, 17 insertions(+), 8 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -208,6 +208,7 @@
+ - add config option to supress not found log message.
+ - wait for master map available at start.
+ - add master read wait option.
++- fix included master map not found return.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/lookup.c
++++ autofs-5.0.7/daemon/lookup.c
+@@ -241,7 +241,7 @@ int lookup_nss_read_master(struct master
+ 	}
+ 
+ 	/* First one gets it */
+-	result = NSS_STATUS_UNKNOWN;
++	result = NSS_STATUS_SUCCESS;
+ 	head = &nsslist;
+ 	list_for_each(p, head) {
+ 		struct nss_source *this;
+@@ -282,8 +282,10 @@ int lookup_nss_read_master(struct master
+ 			}
+ 		}
+ 
+-		if (result == NSS_STATUS_UNKNOWN) {
++		if (result == NSS_STATUS_UNKNOWN ||
++		    result == NSS_STATUS_NOTFOUND) {
+ 			debug(logopt, "no map - continuing to next source");
++			result = NSS_STATUS_SUCCESS;
+ 			continue;
+ 		}
+ 
+--- autofs-5.0.7.orig/modules/lookup_file.c
++++ autofs-5.0.7/modules/lookup_file.c
+@@ -463,6 +463,8 @@ int lookup_read_master(struct master *ma
+ 
+ 	f = open_fopen_r(ctxt->mapname);
+ 	if (!f) {
++		if (errno == ENOENT)
++			return NSS_STATUS_NOTFOUND;
+ 		error(logopt,
+ 		      MODPREFIX "could not open master map file %s",
+ 		      ctxt->mapname);
+@@ -506,12 +508,14 @@ int lookup_read_master(struct master *ma
+ 				     MODPREFIX
+ 				     "failed to read included master map %s",
+ 				     master->name);
+-				/*
+-				 * If we're starting up wee need the whole
+-				 * master map initially, so tell the upper
+-				 * layer to retry.
+-				 */
+-				master->read_fail = 1;
++				if (status != NSS_STATUS_NOTFOUND) {
++					/*
++					 * If we're starting up wee need the whole
++					 * master map initially, so tell the upper
++					 * layer to retry.
++					 */
++					master->read_fail = 1;
++				}
+ 			}
+ 			master->depth--;
+ 			master->recurse = 0;
+@@ -712,6 +716,8 @@ int lookup_read_map(struct autofs_point
+ 
+ 	f = open_fopen_r(ctxt->mapname);
+ 	if (!f) {
++		if (errno == ENOENT)
++			return NSS_STATUS_NOTFOUND;
+ 		error(ap->logopt,
+ 		      MODPREFIX "could not open map file %s", ctxt->mapname);
+ 		return NSS_STATUS_UNAVAIL;

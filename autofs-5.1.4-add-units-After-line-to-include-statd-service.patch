@@ -1,0 +1,39 @@
+autofs-5.1.4 - add units After line to include statd service
+
+From: Ian Kent <raven@themaw.net>
+
+autofs needs to ensure statd is started before any NFS mounts
+are attempted. This is because if the first NFS mount starts
+the service and the mount is an automounted directory that is
+included in the PATH used by systemctl (eg. /usr/local/bin)
+the mount cannot complete.
+
+Add rpc-statd.service to the unit "After=" line to try and
+ensure it is started before automount.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG                 |    1 +
+ samples/autofs.service.in |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -299,6 +299,7 @@
+ - dont allow trailing slash in master map mount points.
+ - fix fd leak in rpc_do_create_client().
+ - add man page note about extra slashes in paths.
++- add units After line to include statd service.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/samples/autofs.service.in
++++ autofs-5.0.7/samples/autofs.service.in
+@@ -1,6 +1,6 @@
+ [Unit]
+ Description=Automounts filesystems on demand
+-After=network.target ypbind.service sssd.service network-online.target remote-fs.target
++After=network.target ypbind.service sssd.service network-online.target remote-fs.target rpc-statd.service rpcbind.service
+ Wants=network-online.target rpc-statd.service rpcbind.service
+ 
+ [Service]

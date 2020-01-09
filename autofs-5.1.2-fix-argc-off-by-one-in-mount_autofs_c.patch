@@ -1,0 +1,55 @@
+autofs-5.1.2 - fix argc off by one in mount_autofs.c
+
+From: Ian Kent <raven@themaw.net>
+
+The mount_autofs.c module incorrectly calculates the number of
+arguments to its map.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG              |    1 +
+ modules/mount_autofs.c |    8 ++++----
+ 2 files changed, 5 insertions(+), 4 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -220,6 +220,7 @@
+ - update and add README for old autofs schema.
+ - fix short memory allocation in lookup_amd_instance().
+ - fix count_mounts() function.
++- fix argc off by one in mount_autofs.c.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/mount_autofs.c
++++ autofs-5.0.7/modules/mount_autofs.c
+@@ -179,11 +179,11 @@ int mount_mount(struct autofs_point *ap,
+ 
+ 	if (options) {
+ 		char *t = options;
+-		do {
++		while ((t = strchr(t, ',')) != NULL) {
+ 			argc++;
+ 			if (*t == ',')
+ 				t++;
+-		} while ((t = strchr(t, ',')) != NULL);
++		}
+ 	}
+ 	argv = (const char **) alloca((argc + 1) * sizeof(char *));
+ 
+@@ -235,13 +235,13 @@ int mount_mount(struct autofs_point *ap,
+ 
+ 	if (options) {
+ 		p = options;
+-		do {
++		while ((p = strchr(p, ',')) != NULL) {
+ 			if (*p == ',') {
+ 				*p = '\0';
+ 				p++;
+ 			}
+ 			argv[argc++] = p;
+-		} while ((p = strchr(p, ',')) != NULL);
++		}
+ 	}
+ 	argv[argc] = NULL;
+ 

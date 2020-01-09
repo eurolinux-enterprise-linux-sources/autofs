@@ -1,0 +1,35 @@
+autofs-5.1.1 - add remote-fs.target systemd dependency
+
+From: Ian Kent <raven@themaw.net>
+
+If maps are stored on a NFS mount autofs will fail to start if the
+systemd unit doesn't depend on the remote-fs target.
+
+I'm not sure how this will affect systems that don't have anything
+to depend on in the remote-fs target but I expect it will not stop
+the startup from functioning.
+---
+ CHANGELOG                 |    1 +
+ samples/autofs.service.in |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -183,6 +183,7 @@
+ - update map_hash_table_size description.
+ - fix out of order call in program map lookup.
+ - make service want network-online.
++- add remote-fs.target systemd dependency.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/samples/autofs.service.in
++++ autofs-5.0.7/samples/autofs.service.in
+@@ -1,6 +1,6 @@
+ [Unit]
+ Description=Automounts filesystems on demand
+-After=network.target ypbind.service sssd.service network-online.target
++After=network.target ypbind.service sssd.service network-online.target remote-fs.target
+ Wants=network-online.target
+ 
+ [Service]

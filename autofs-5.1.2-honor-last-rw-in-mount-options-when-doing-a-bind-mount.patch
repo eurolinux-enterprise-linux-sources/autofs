@@ -1,0 +1,43 @@
+autofs-5.1.2 - honor last rw in mount options when doing a bind mount
+
+From: David Jeffery <djeffery@redhat.com>
+
+mount(8) will use the last ro/rw option in its options list.
+e.g. "mount -o ro,rw" will make a read-write mount while
+"mount -o rw,ro" will make a read-only mount.
+
+The patch changes the option parsing for mount_mount() in
+modules/mount_nfs.c to clear the ro variable when a "rw"
+option is seen. This will handle occurrences of both "ro"
+and "rw" options, resulting in a read-only option being
+passed to a bind mount only if the option order would also
+have resulted in an nfs mount being read-only.
+
+Signed-off-by: David Jeffery <djeffery@redhat.com>
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ modules/mount_nfs.c |    2 ++
+ 2 files changed, 3 insertions(+)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -216,6 +216,7 @@
+ - make set_direct_mount_catatonic() more general.
+ - set autofs mounts catatonic at exit.
+ - check NFS server availability on local mount fallback.
++- honor last rw in mount options when doing a bind mount.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/mount_nfs.c
++++ autofs-5.0.7/modules/mount_nfs.c
+@@ -180,6 +180,8 @@ int mount_mount(struct autofs_point *ap,
+ 				   with bind mounts */
+ 				else if (_strncmp("ro", cp, o_len) == 0)
+ 					ro = 1;
++				else if (_strncmp("rw", cp, o_len) == 0)
++					ro = 0;
+ 				/* and jump over trailing white space */
+ 				memcpy(nfsp, cp, comma - cp + 1);
+ 				nfsp += comma - cp + 1;

@@ -1,0 +1,56 @@
+autofs-5.1.2 - add the mount requestor's pid to pending_args
+
+From: Lars R. Damerow <lars@pixar.com>
+
+This will make it easier to log more information about the requesting
+process as the mount request proceeds.
+
+Signed-off-by: Lars R. Damerow <lars@pixar.com>
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ daemon/direct.c     |    1 +
+ daemon/indirect.c   |    1 +
+ include/automount.h |    1 +
+ 4 files changed, 4 insertions(+)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -235,6 +235,7 @@
+ - handle amd cache option all in amd type auto mounts.
+ - fix bogus check in expire_cleanup().
+ - delay submount exit for amd submounts.
++- add the mount requestor's pid to pending_args.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/direct.c
++++ autofs-5.0.7/daemon/direct.c
+@@ -1465,6 +1465,7 @@ int handle_packet_missing_direct(struct
+ 	mt->type = NFY_MOUNT;
+ 	mt->uid = pkt->uid;
+ 	mt->gid = pkt->gid;
++	mt->pid = pkt->pid;
+ 	mt->wait_queue_token = pkt->wait_queue_token;
+ 
+ 	status = pthread_create(&thid, &th_attr_detached, do_mount_direct, mt);
+--- autofs-5.0.7.orig/daemon/indirect.c
++++ autofs-5.0.7/daemon/indirect.c
+@@ -860,6 +860,7 @@ int handle_packet_missing_indirect(struc
+ 	mt->dev = pkt->dev;
+ 	mt->uid = pkt->uid;
+ 	mt->gid = pkt->gid;
++	mt->pid = pkt->pid;
+ 	mt->wait_queue_token = pkt->wait_queue_token;
+ 
+ 	status = pthread_create(&thid, &th_attr_detached, do_mount_indirect, mt);
+--- autofs-5.0.7.orig/include/automount.h
++++ autofs-5.0.7/include/automount.h
+@@ -425,6 +425,7 @@ struct pending_args {
+ 	unsigned int len;		/* Name field len */
+ 	uid_t uid;			/* uid of requestor */
+ 	gid_t gid;			/* gid of requestor */
++	pid_t pid;			/* pid of requestor */
+ 	unsigned long wait_queue_token;	/* Associated kernel wait token */
+ };
+ 

@@ -1,0 +1,39 @@
+autofs-5.1.0 - fix out of order clearing of options buffer
+
+From: Ian Kent <ikent@redhat.com>
+
+When setting the result of parsing an options string the options buffer
+was being cleared before use.
+---
+ CHANGELOG           |    1 +
+ modules/amd_parse.y |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -151,6 +151,7 @@
+ - fix memory leak in create_client().
+ - fix memory leak in get_exports().
+ - fix memory leak in get_defaults_entry().
++- fix out of order clearing of options buffer.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/amd_parse.y
++++ autofs-5.0.7/modules/amd_parse.y
+@@ -396,7 +396,6 @@ option_assignment: MAP_OPTION OPTION_ASS
+ 	}
+ 	| MNT_OPTION OPTION_ASSIGN options
+ 	{
+-		memset(opts, 0, sizeof(opts));
+ 		if (!strcmp($1, "opts"))
+ 			entry.opts = amd_strdup(opts);
+ 		else if (!strcmp($1, "addopts"))
+@@ -407,6 +406,7 @@ option_assignment: MAP_OPTION OPTION_ASS
+ 			amd_notify($1);
+ 			YYABORT;
+ 		}
++		memset(opts, 0, sizeof(opts));
+ 	}
+ 	| MNT_OPTION OPTION_ASSIGN
+ 	{

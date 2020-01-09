@@ -1,0 +1,41 @@
+autofs-5.1.2 - fix work around sss startup delay
+
+From: Ian Kent <raven@themaw.net>
+
+If a sss startup delay has been configured to non-zero autofs will
+wait up to the configured time and return NSS_STATUS_UNAVAIL or
+NSS_STATUS_NOTFOUND even if setautomntent_wait() returns success.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG            |    1 +
+ modules/lookup_sss.c |    8 +++++---
+ 2 files changed, 6 insertions(+), 3 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -244,6 +244,7 @@
+ - add sss master map wait config option.
+ - use autofs_point to store expire timeout where possibe.
+ - fix possible NULL derefernce.
++- fix work around sss startup delay.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/lookup_sss.c
++++ autofs-5.0.7/modules/lookup_sss.c
+@@ -309,9 +309,11 @@ int lookup_read_master(struct master *ma
+ 		ret = setautomntent_wait(logopt,
+ 					 ctxt, ctxt->mapname, &sss_ctxt,
+ 					 retries);
+-		if (ret == ENOENT)
+-			return NSS_STATUS_NOTFOUND;
+-		return NSS_STATUS_UNAVAIL;
++		if (ret) {
++			if (ret == ENOENT)
++				return NSS_STATUS_NOTFOUND;
++			return NSS_STATUS_UNAVAIL;
++		}
+ 	}
+ 
+ 	count = 0;

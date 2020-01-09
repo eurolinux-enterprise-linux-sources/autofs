@@ -1,0 +1,41 @@
+autofs-5.0.8 - fix negative status being reset on map read
+
+From: Ian Kent <raven@themaw.net>
+
+The map entry status field, which holds the negative cache timeout,
+gets reset on a map re-read.
+
+If the negative map entry was added at the same time as the map
+read and it was for an entry that was never in the map, the
+status gets reset even though the entry is still a valid
+negative entry.
+
+Consequently lookups for non-existent map entries are never
+seen as negative and the lookup always continues.
+---
+ CHANGELOG       |    1 +
+ daemon/lookup.c |    3 ++-
+ 2 files changed, 3 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -70,6 +70,7 @@
+ - get_nfs_info() should query portmapper if port is not given.
+ - fix rpc_portmap_getport() proto not set.
+ - fix protmap not trying proto v2.
++- fix negative status being reset on map read.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/lookup.c
++++ autofs-5.0.7/daemon/lookup.c
+@@ -1042,7 +1042,8 @@ void lookup_prune_one_cache(struct autof
+ 			 * Reset time of last fail for valid map entries to
+ 			 * force entry update and subsequent mount retry.
+ 			 */
+-			me->status = 0;
++			if (me->mapent)
++				me->status = 0;
+ 			me = cache_enumerate(mc, me);
+ 			continue;
+ 		}

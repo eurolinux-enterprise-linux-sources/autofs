@@ -1,0 +1,285 @@
+autofs-5.0.7 - fix portmap lookup
+
+From: Ian Kent <ikent@redhat.com>
+
+The autofs RPC library has fallen behind some.
+
+When using IPv6 (rpbbind) version 3 or 4 is available whereas with IPv4
+(portmap) verions 2 and 3 are available.
+
+autofs uses the version defined by PMAPVERS in the portmap include files
+whereas it should be using the RPCBVERS defines when using libtirpc.
+
+In addition /etc/rpc should be used for program number lookup and
+/etc/services should be used to lookup rpcbind/protmap port number.
+
+This incompatibility only shows up when using IPv6 only.
+---
+ CHANGELOG           |    1 
+ aclocal.m4          |    2 +
+ configure           |   80 +++++++++++++++++++++++++++++++++++++++++++++
+ include/config.h.in |    6 +++
+ lib/rpc_subs.c      |   92 ++++++++++++++++++++++++++++++++++++++++++++++++----
+ 5 files changed, 175 insertions(+), 6 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -62,6 +62,7 @@
+ - try and cleanup after dumpmaps.
+ - teach dumpmaps to output simple key value pairs.
+ - fix get_nfs_info() probe.
++- fix portmap lookup.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/aclocal.m4
++++ autofs-5.0.7/aclocal.m4
+@@ -421,6 +421,8 @@ if test "$af_have_libtirpc" = "yes"; the
+     TIRPCLIB="-ltirpc"
+ fi
+ 
++AC_CHECK_FUNCS([getrpcbyname getservbyname])
++
+ # restore flags
+ CFLAGS="$af_check_libtirpc_save_cflags"
+ LDFLAGS="$af_check_libtirpc_save_ldflags"
+--- autofs-5.0.7.orig/configure
++++ autofs-5.0.7/configure
+@@ -1559,6 +1559,73 @@ fi
+ 
+ } # ac_fn_c_try_link
+ 
++# ac_fn_c_check_func LINENO FUNC VAR
++# ----------------------------------
++# Tests whether FUNC exists, setting the cache variable VAR accordingly
++ac_fn_c_check_func ()
++{
++  as_lineno=${as_lineno-"$1"} as_lineno_stack=as_lineno_stack=$as_lineno_stack
++  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for $2" >&5
++$as_echo_n "checking for $2... " >&6; }
++if eval \${$3+:} false; then :
++  $as_echo_n "(cached) " >&6
++else
++  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
++/* end confdefs.h.  */
++/* Define $2 to an innocuous variant, in case <limits.h> declares $2.
++   For example, HP-UX 11i <limits.h> declares gettimeofday.  */
++#define $2 innocuous_$2
++
++/* System header to define __stub macros and hopefully few prototypes,
++    which can conflict with char $2 (); below.
++    Prefer <limits.h> to <assert.h> if __STDC__ is defined, since
++    <limits.h> exists even on freestanding compilers.  */
++
++#ifdef __STDC__
++# include <limits.h>
++#else
++# include <assert.h>
++#endif
++
++#undef $2
++
++/* Override any GCC internal prototype to avoid an error.
++   Use char because int might match the return type of a GCC
++   builtin and then its argument prototype would still apply.  */
++#ifdef __cplusplus
++extern "C"
++#endif
++char $2 ();
++/* The GNU C library defines this for functions which it implements
++    to always fail with ENOSYS.  Some functions are actually named
++    something starting with __ and the normal name is an alias.  */
++#if defined __stub_$2 || defined __stub___$2
++choke me
++#endif
++
++int
++main ()
++{
++return $2 ();
++  ;
++  return 0;
++}
++_ACEOF
++if ac_fn_c_try_link "$LINENO"; then :
++  eval "$3=yes"
++else
++  eval "$3=no"
++fi
++rm -f core conftest.err conftest.$ac_objext \
++    conftest$ac_exeext conftest.$ac_ext
++fi
++eval ac_res=\$$3
++	       { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
++$as_echo "$ac_res" >&6; }
++  eval $as_lineno_stack; ${as_lineno_stack:+:} unset as_lineno
++
++} # ac_fn_c_check_func
++
+ # ac_fn_c_try_cpp LINENO
+ # ----------------------
+ # Try to preprocess conftest.$ac_ext, and return whether this succeeded.
+@@ -3161,6 +3228,19 @@ $as_echo "#define TIRPC_WORKAROUND 1" >>
+     TIRPCLIB="-ltirpc"
+ fi
+ 
++for ac_func in getrpcbyname getservbyname
++do :
++  as_ac_var=`$as_echo "ac_cv_func_$ac_func" | $as_tr_sh`
++ac_fn_c_check_func "$LINENO" "$ac_func" "$as_ac_var"
++if eval test \"x\$"$as_ac_var"\" = x"yes"; then :
++  cat >>confdefs.h <<_ACEOF
++#define `$as_echo "HAVE_$ac_func" | $as_tr_cpp` 1
++_ACEOF
++
++fi
++done
++
++
+ # restore flags
+ CFLAGS="$af_check_libtirpc_save_cflags"
+ LDFLAGS="$af_check_libtirpc_save_ldflags"
+--- autofs-5.0.7.orig/include/config.h.in
++++ autofs-5.0.7/include/config.h.in
+@@ -21,6 +21,12 @@
+ /* define if you have E4FSCK */
+ #undef HAVE_E4FSCK
+ 
++/* Define to 1 if you have the `getrpcbyname' function. */
++#undef HAVE_GETRPCBYNAME
++
++/* Define to 1 if you have the `getservbyname' function. */
++#undef HAVE_GETSERVBYNAME
++
+ /* Define to 1 if you have the <inttypes.h> header file. */
+ #undef HAVE_INTTYPES_H
+ 
+--- autofs-5.0.7.orig/lib/rpc_subs.c
++++ autofs-5.0.7/lib/rpc_subs.c
+@@ -43,6 +43,14 @@
+                 } while (0)
+ #endif
+ 
++#ifdef WITH_LIBTIRPC
++const rpcprog_t rpcb_prog = RPCBPROG;
++const rpcvers_t rpcb_version = RPCBVERS;
++#else
++const rpcprog_t rpcb_prog = PMAPPROG;
++const rpcvers_t rpcb_version = PMAPVERS;
++#endif
++
+ #include "mount.h"
+ #include "rpc_subs.h"
+ #include "automount.h"
+@@ -259,6 +267,9 @@ static int rpc_do_create_client(struct s
+ 		laddr = (struct sockaddr *) &in4_laddr;
+ 		in4_raddr->sin_port = htons(info->port);
+ 		slen = sizeof(struct sockaddr_in);
++		/* Use rpcbind v2 for AF_INET */
++		if (info->program == rpcb_prog)
++			info->version = PMAPVERS;
+ 	} else if (addr->sa_family == AF_INET6) {
+ 		struct sockaddr_in6 *in6_raddr = (struct sockaddr_in6 *) addr;
+ 		in6_laddr.sin6_family = AF_INET6;
+@@ -315,6 +326,63 @@ static int rpc_do_create_client(struct s
+ }
+ #endif
+ 
++#if defined(HAVE_GETRPCBYNAME) || defined(HAVE_GETSERVBYNAME)
++static pthread_mutex_t rpcb_mutex = PTHREAD_MUTEX_INITIALIZER;
++#endif
++
++static rpcprog_t rpc_getrpcbyname(const rpcprog_t program)
++{
++#ifdef HAVE_GETRPCBYNAME
++	static const char *rpcb_pgmtbl[] = {
++		"rpcbind", "portmap", "portmapper", "sunrpc", NULL,
++	};
++	struct rpcent *entry;
++	rpcprog_t prog_number;
++	unsigned int i;
++
++	pthread_mutex_lock(&rpcb_mutex);
++	for (i = 0; rpcb_pgmtbl[i] != NULL; i++) {
++		entry = getrpcbyname(rpcb_pgmtbl[i]);
++		if (entry) {
++			prog_number = entry->r_number;
++			pthread_mutex_unlock(&rpcb_mutex);
++			return prog_number;
++		}
++	}
++	pthread_mutex_unlock(&rpcb_mutex);
++#endif
++	return program;
++}
++
++static unsigned short rpc_getrpcbport(const int proto)
++{
++#ifdef HAVE_GETSERVBYNAME
++	static const char *rpcb_netnametbl[] = {
++		"rpcbind", "portmapper", "sunrpc", NULL,
++	};
++	struct servent *entry;
++	struct protoent *p_ent;
++	unsigned short port;
++	unsigned int i;
++
++	pthread_mutex_lock(&rpcb_mutex);
++	p_ent = getprotobynumber(proto);
++	if (!p_ent)
++		goto done;
++	for (i = 0; rpcb_netnametbl[i] != NULL; i++) {
++		entry = getservbyname(rpcb_netnametbl[i], p_ent->p_name);
++		if (entry) {
++			port = entry->s_port;
++			pthread_mutex_unlock(&rpcb_mutex);
++			return port;
++		}
++	}
++done:
++	pthread_mutex_unlock(&rpcb_mutex);
++#endif
++	return (unsigned short) PMAPPORT;
++}
++
+ /*
+  * Create an RPC client
+  */
+@@ -510,9 +578,15 @@ int rpc_portmap_getclient(struct conn_in
+ 	info->host = host;
+ 	info->addr = addr;
+ 	info->addr_len = addr_len;
+-	info->program = PMAPPROG;
+-	info->port = PMAPPORT;
+-	info->version = PMAPVERS;
++	info->program = rpc_getrpcbyname(rpcb_prog);
++	info->port = ntohs(rpc_getrpcbport(proto));
++	/*
++	 * When using libtirpc we might need to change the rpcbind version
++	 * to qurey AF_INET addresses. Since we might not have an address
++	 * yet set AF_INET rpcbind version in rpc_do_create_client() when
++	 * we always have an address.
++	 */
++	info->version = rpcb_version;
+ 	info->proto = proto;
+ 	info->send_sz = RPCSMALLMSGSIZE;
+ 	info->recv_sz = RPCSMALLMSGSIZE;
+@@ -555,9 +629,15 @@ int rpc_portmap_getport(struct conn_info
+ 		pmap_info.host = info->host;
+ 		pmap_info.addr = info->addr;
+ 		pmap_info.addr_len = info->addr_len;
+-		pmap_info.port = PMAPPORT;
+-		pmap_info.program = PMAPPROG;
+-		pmap_info.version = PMAPVERS;
++		pmap_info.port = ntohs(rpc_getrpcbport(info->proto));
++		pmap_info.program = rpc_getrpcbyname(rpcb_prog);
++		/*
++		 * When using libtirpc we might need to change the rpcbind
++		 * version to qurey AF_INET addresses. Since we might not
++		 * have an address yet set AF_INET rpcbind version in
++		 * rpc_do_create_client() when we always have an address.
++		 */
++		pmap_info.version = rpcb_version;
+ 		pmap_info.proto = info->proto;
+ 		pmap_info.send_sz = RPCSMALLMSGSIZE;
+ 		pmap_info.recv_sz = RPCSMALLMSGSIZE;

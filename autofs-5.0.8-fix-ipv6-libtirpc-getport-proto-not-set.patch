@@ -1,0 +1,41 @@
+autofs-5.0.8 - fix rpc_portmap_getport() proto not set
+
+From: Ian Kent <raven@themaw.net>
+
+Recent changes to fix libtirpc usage problems when getting a server
+exports list cause later server probing to fail.
+
+When getting an exports list a new rpc client is always created for
+the query, which includes setting the protocol in the parameters
+structure. But when probing availability the client is reused where
+possible and the protocol is not set in the parameters structure in
+this case.
+
+The rpc_portmap_getport() changes require that the protocol is set
+in oder to function.
+---
+ CHANGELOG      |    1 +
+ lib/rpc_subs.c |    2 ++
+ 2 files changed, 3 insertions(+)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -68,6 +68,7 @@
+ - improve timeout option description.
+ - fix fix ipv6 libtirpc getport.
+ - get_nfs_info() should query portmapper if port is not given.
++- fix rpc_portmap_getport() proto not set.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/lib/rpc_subs.c
++++ autofs-5.0.7/lib/rpc_subs.c
+@@ -877,6 +877,8 @@ int rpc_portmap_getport(struct conn_info
+ 
+ 	memset(&pmap_info, 0, sizeof(struct conn_info));
+ 
++	pmap_info.proto = proto;
++
+ 	if (proto == IPPROTO_TCP)
+ 		pmap_info.timeout.tv_sec = PMAP_TOUT_TCP;
+ 	else

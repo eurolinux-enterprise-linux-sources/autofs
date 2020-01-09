@@ -1,0 +1,167 @@
+autofs-5.0.9 - amd lookup add fs types lofs, ext, and xfs
+
+From: Ian Kent <raven@themaw.net>
+
+
+---
+ include/parse_amd.h |    9 +++++++++
+ modules/amd_parse.y |   13 +++++++++++++
+ modules/amd_tok.l   |    4 +++-
+ modules/parse_amd.c |   50 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 75 insertions(+), 1 deletion(-)
+
+diff --git a/include/parse_amd.h b/include/parse_amd.h
+index a8521b5..4015e9f 100644
+--- a/include/parse_amd.h
++++ b/include/parse_amd.h
+@@ -20,6 +20,14 @@
+ #define AMD_MOUNT_TYPE_NFS	0x00000002
+ #define AMD_MOUNT_TYPE_LINK	0x00000004
+ #define AMD_MOUNT_TYPE_HOST	0x00000008
++#define AMD_MOUNT_TYPE_NFSL	0x00000010
++#define AMD_MOUNT_TYPE_NFSX	0x00000020
++#define AMD_MOUNT_TYPE_LINKX	0x00000040
++#define AMD_MOUNT_TYPE_LOFS	0x00000080
++#define AMD_MOUNT_TYPE_EXT	0x00000100
++#define AMD_MOUNT_TYPE_XFS	0x00000200
++#define AMD_MOUNT_TYPE_JFS	0x00000400
++#define AMD_MOUNT_TYPE_CACHEFS	0x00000800
+ #define AMD_MOUNT_TYPE_MASK	0x0000ffff
+ 
+ #define AMD_ENTRY_CUT		0x00010000
+@@ -38,6 +46,7 @@ struct amd_entry {
+ 	char *fs;
+ 	char *rhost;
+ 	char *rfs;
++	char *dev;
+ 	char *opts;
+ 	char *addopts;
+ 	char *remopts;
+diff --git a/modules/amd_parse.y b/modules/amd_parse.y
+index 71fd569..cd69c49 100644
+--- a/modules/amd_parse.y
++++ b/modules/amd_parse.y
+@@ -248,6 +248,17 @@ option_assignment: MAP_OPTION OPTION_ASSIGN FS_TYPE
+ 		} else if (!strcmp($3, "host")) {
+ 			entry.flags |= AMD_MOUNT_TYPE_HOST;
+ 			entry.type = amd_strdup($3);
++		} else if (!strcmp($3, "lofs")) {
++			entry.flags |= AMD_MOUNT_TYPE_LOFS;
++			entry.type = amd_strdup("bind");
++		} else if (!strcmp($3, "xfs")) {
++			entry.flags |= AMD_MOUNT_TYPE_XFS;
++			entry.type = amd_strdup($3);
++		} else if (!strcmp($3, "ext2") ||
++			   !strcmp($3, "ext3") ||
++			   !strcmp($3, "ext4")) {
++			entry.flags |= AMD_MOUNT_TYPE_EXT;
++			entry.type = amd_strdup($3);
+ 		} else {
+ 			amd_notify($1);
+ 			YYABORT;
+@@ -291,6 +302,8 @@ option_assignment: MAP_OPTION OPTION_ASSIGN FS_TYPE
+ 			entry.rhost = amd_strdup($3);
+ 		else if (!strcmp($1, "rfs"))
+ 			entry.rfs = amd_strdup($3);
++		else if (!strcmp($1, "dev"))
++			entry.dev = amd_strdup($3);
+ 		else {
+ 			amd_notify($1);
+ 			YYABORT;
+diff --git a/modules/amd_tok.l b/modules/amd_tok.l
+index cea9ea5..fdc8899 100644
+--- a/modules/amd_tok.l
++++ b/modules/amd_tok.l
+@@ -98,7 +98,9 @@ MAPOPT		(fs|type|maptype|pref|sublink|delay)
+ MNTOPT		(opts|addopts|remopts)
+ FSOPTS		(rhost|rfs|dev|cachedir)
+ MAPTYPE		(file|nis|nisplus|ldap|hesiod|exec|ndbm|passwd|union)
+-FSTYPE		(auto|nfs|link|host|nfsx|ufs|xfs|efs)
++FSTYPE_LOCAL	(link|linkx|lofs|ext2|ext3|ext4|xfs|jfs|cachefs)
++FSTYPE_NET	(nfs|nfsx|nfsl|host)
++FSTYPE		(auto|program|direct|{FSTYPE_LOCAL}|{FSTYPE_NET})
+ 
+ OSSEL		(arch|karch|os|osver|full_os|vendor)
+ HSTSEL		(host|hostd|domain|byte|cluster)
+diff --git a/modules/parse_amd.c b/modules/parse_amd.c
+index 4322479..e27a195 100644
+--- a/modules/parse_amd.c
++++ b/modules/parse_amd.c
+@@ -598,6 +598,12 @@ static void update_with_defaults(struct amd_entry *defaults,
+ 		}
+ 	}
+ 
++	if (!entry->dev && defaults->dev) {
++		tmp = strdup(defaults->dev);
++		if (tmp)
++			entry->dev = tmp;
++	}
++
+ 	if (!entry->opts && defaults->opts) {
+ 		tmp = merge_options(defaults->opts, entry->opts);
+ 		if (tmp)
+@@ -949,6 +955,35 @@ out:
+ 	return ret;
+ }
+ 
++static int do_generic_mount(struct autofs_point *ap, const char *name,
++			    struct amd_entry *entry, const char *target,
++			    unsigned int flags)
++{
++	int ret = 0;
++
++	if (!entry->sublink) {
++		ret = do_mount(ap, ap->path, name, strlen(name),
++			       target, entry->type, entry->opts);
++	} else {
++		/*
++		 * Careful, external mounts may get mounted
++		 * multiple times since they are outside of
++		 * the automount filesystem.
++		 */
++		if (!is_mounted(_PATH_MOUNTED, entry->fs, MNTS_REAL)) {
++			ret = do_mount(ap, entry->fs, "/", 1,
++				       target, entry->type, entry->opts);
++			if (ret)
++				goto out;
++		}
++		/* We might be using an external mount */
++		ext_mount_add(&entry->ext_mount, entry->fs);
++		ret = do_link_mount(ap, name, entry, flags);
++	}
++out:
++	return ret;
++}
++
+ static int do_nfs_mount(struct autofs_point *ap, const char *name,
+ 			struct amd_entry *entry, unsigned int flags)
+ {
+@@ -1024,6 +1059,15 @@ static int amd_mount(struct autofs_point *ap, const char *name,
+ 		ret = do_auto_mount(ap, name, entry, flags);
+ 		break;
+ 
++	case AMD_MOUNT_TYPE_LOFS:
++		ret = do_generic_mount(ap, name, entry, entry->rfs, flags);
++		break;
++
++	case AMD_MOUNT_TYPE_EXT:
++	case AMD_MOUNT_TYPE_XFS:
++		ret = do_generic_mount(ap, name, entry, entry->dev, flags);
++		break;
++
+ 	case AMD_MOUNT_TYPE_NFS:
+ 		ret = do_nfs_mount(ap, name, entry, flags);
+ 		break;
+@@ -1260,6 +1304,12 @@ static struct amd_entry *dup_defaults_entry(struct amd_entry *defaults)
+ 			entry->rhost = tmp;
+ 	}
+ 
++	if (defaults->dev) {
++		tmp = strdup(defaults->dev);
++		if (tmp)
++			entry->dev = tmp;
++	}
++
+ 	if (defaults->opts) {
+ 		tmp = strdup(defaults->opts);
+ 		if (tmp)

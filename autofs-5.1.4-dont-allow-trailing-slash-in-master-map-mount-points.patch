@@ -1,0 +1,44 @@
+autofs-5.1.4 - dont allow trailing slash in master map mount points
+
+From: Ian Kent <raven@themaw.net>
+
+If a master map mount point path has a trailing '/' this can cause
+problems so remove them at parse time.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ lib/master_parse.y |    5 +++++
+ 2 files changed, 6 insertions(+)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -296,6 +296,7 @@
+ - fix sublink option not set from defaults.
+ - fix error return in do_nfs_mount().
+ - fix create_client() RPC client handling.
++- dont allow trailing slash in master map mount points.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/lib/master_parse.y
++++ autofs-5.0.7/lib/master_parse.y
+@@ -744,6 +744,7 @@ int master_parse_entry(const char *buffe
+ 	struct map_source *source;
+ 	unsigned int logopt = logging;
+ 	unsigned int m_logopt = master->logopt;
++	size_t mp_len;
+ 	int ret;
+ 
+ 	local_init_vars();
+@@ -758,6 +759,10 @@ int master_parse_entry(const char *buffe
+ 		return 0;
+ 	}
+ 
++	mp_len = strlen(path);
++	while (mp_len && path[--mp_len] == '/')
++		path[mp_len] = 0;
++
+ 	nc = master->nc;
+ 
+ 	/* Add null map entries to the null map cache */

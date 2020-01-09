@@ -1,0 +1,76 @@
+autofs-5.1.0 - handle duplicates in multi mounts
+
+From: Ian Kent <ikent@redhat.com>
+
+Duplicate entries in multi-mounts are a syntax error however some
+other automount implementations allow them and attempt to continue
+with the mount anyway.
+
+This patch turns a detected duplicate error into a success return
+in order to continue.
+
+Since it can't be known if the first or the later entry is the
+correct one to use the later replaces the old unless a memory
+allocation error occures in which case the old entry is retained
+and the change is noted in the log.
+---
+ CHANGELOG           |    1 +
+ lib/cache.c         |   19 ++++++++++++++++++-
+ modules/parse_sun.c |    5 +++--
+ 3 files changed, 22 insertions(+), 3 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -165,6 +165,7 @@
+ - add a prefix to program map stdvars.
+ - add config option to force use of program map stdvars.
+ - fix incorrect check in parse_mount().
++- handle duplicates in multi mounts.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/lib/cache.c
++++ autofs-5.0.7/lib/cache.c
+@@ -733,8 +733,25 @@ int cache_update_offset(struct mapent_ca
+ 
+ 	me = cache_lookup_distinct(mc, key);
+ 	if (me && me->age == age) {
+-		if (me == owner || strcmp(me->key, key) == 0)
++		if (me == owner || strcmp(me->key, key) == 0) {
++			char *pent;
++
++			warn(logopt,
++			     "duplcate offset detected for key %s", me->key);
++
++			pent = malloc(strlen(mapent) + 1);
++			if (!pent)
++				warn(logopt,
++				     "map entry not updated: %s", me->mapent);
++			else {
++				if (me->mapent)
++					free(me->mapent);
++				me->mapent = strcpy(pent, mapent);
++				warn(logopt,
++				     "map entry updated with: %s", mapent);
++			}
+ 			return CHE_DUPLICATE;
++		}
+ 	}
+ 
+ 	ret = cache_update(mc, owner->source, key, mapent, age);
+--- autofs-5.0.7.orig/modules/parse_sun.c
++++ autofs-5.0.7/modules/parse_sun.c
+@@ -804,10 +804,11 @@ update_offset_entry(struct autofs_point
+ 	}
+ 
+ 	ret = cache_update_offset(mc, name, m_key, m_mapent, age);
+-	if (ret == CHE_DUPLICATE)
++	if (ret == CHE_DUPLICATE) {
+ 		warn(ap->logopt, MODPREFIX
+ 		     "syntax error or duplicate offset %s -> %s", path, loc);
+-	else if (ret == CHE_FAIL)
++		ret = CHE_OK;
++	} else if (ret == CHE_FAIL)
+ 		debug(ap->logopt, MODPREFIX
+ 		      "failed to update multi-mount offset %s -> %s", path, m_mapent);
+ 	else {

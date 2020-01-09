@@ -1,0 +1,59 @@
+autofs-5.1.2 - delay submount exit for amd submounts
+
+From: Ian Kent <raven@themaw.net>
+
+For amd format maps it's better to not expire away submounts (amd
+type "auto" mounts) straight way.
+
+This is because of the common heavy reuse of maps in amd maps and
+we want to try and avoid constantly re-reading large maps.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG      |    1 +
+ daemon/state.c |   18 +++++++++++++++---
+ 2 files changed, 16 insertions(+), 3 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -234,6 +234,7 @@
+ - handle map_option cache for top level mounts.
+ - handle amd cache option all in amd type auto mounts.
+ - fix bogus check in expire_cleanup().
++- delay submount exit for amd submounts.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/state.c
++++ autofs-5.0.7/daemon/state.c
+@@ -132,15 +132,27 @@ void expire_cleanup(void *arg)
+ 			 * mount expires in a reasonable time. Just skip
+ 			 * one expire check after it's no longer busy before
+ 			 * allowing it to shutdown.
++			 *
++			 * But if this mount point is an amd format map it
++			 * is better to keep the mount around longer. This
++			 * is because of the common heavy reuse of maps in
++			 * amd maps and we want to try and avoid constantly
++			 * re-reading large maps.
+ 			 */
+ 			if (ap->submount && !success) {
+ 				rv = ops->askumount(ap->logopt, ap->ioctlfd, &idle);
+ 				if (!rv && idle && ap->submount > 1) {
+-					next = ST_SHUTDOWN_PENDING;
+-					break;
++					struct map_source *map = ap->entry->maps;
++
++					if (ap->submount > 4 ||
++					   !(map->flags & MAP_FLAG_FORMAT_AMD)) {
++						next = ST_SHUTDOWN_PENDING;
++						break;
++					}
+ 				}
+ 				ap->submount++;
+-			}
++			} else if (ap->submount > 1)
++				ap->submount = 1;
+ 
+ 			if (ap->state == ST_EXPIRE && !ap->submount)
+ 				alarm_add(ap, ap->exp_runfreq);

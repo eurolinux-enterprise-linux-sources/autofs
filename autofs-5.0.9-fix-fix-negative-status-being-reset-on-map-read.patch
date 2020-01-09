@@ -1,0 +1,42 @@
+autofs-5.0.9 - fix fix negative status being reset on map read
+
+From: Ian Kent <ikent@redhat.com>
+
+The original patch to fix the negative status being reset on map
+read caused a regression for the case where a negative entry was
+created as a result of a lookup matching the wildcard entry.
+
+It isn't possible to eliminate the key not found in map messages
+on map read for this case because there's no way of knowing if
+a map change would have fixed the original problem so the negative
+entry status must be reset and the mount retried on each map read.
+---
+ CHANGELOG       |    1 +
+ daemon/lookup.c |    5 ++++-
+ 2 files changed, 5 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -71,6 +71,7 @@
+ - fix rpc_portmap_getport() proto not set.
+ - fix protmap not trying proto v2.
+ - fix negative status being reset on map read.
++- fix fix negative status being reset on map read.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/lookup.c
++++ autofs-5.0.7/daemon/lookup.c
+@@ -1041,8 +1041,11 @@ void lookup_prune_one_cache(struct autof
+ 			/*
+ 			 * Reset time of last fail for valid map entries to
+ 			 * force entry update and subsequent mount retry.
++			 * A map entry that's still invalid after a read
++			 * may have been created by a failed wildcard lookup
++			 * so reset the status on those too.
+ 			 */
+-			if (me->mapent)
++			if (me->mapent || cache_lookup(mc, "*"))
+ 				me->status = 0;
+ 			me = cache_enumerate(mc, me);
+ 			continue;

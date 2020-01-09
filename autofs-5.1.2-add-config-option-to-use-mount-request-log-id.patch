@@ -1,0 +1,148 @@
+autofs-5.1.2 - add config option to use mount request log id
+
+From: Ian Kent <raven@themaw.net>
+
+Add a configuration option to control whether request ids are added to
+mount request log entries. It's default value is to not include the
+additional id.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG                      |    1 +
+ daemon/automount.c             |    3 +++
+ include/defaults.h             |    3 +++
+ lib/defaults.c                 |   18 ++++++++++++++++++
+ man/autofs.conf.5.in           |    6 ++++++
+ redhat/autofs.conf.default.in  |    7 +++++++
+ samples/autofs.conf.default.in |    7 +++++++
+ 7 files changed, 45 insertions(+)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -239,6 +239,7 @@
+ - create thread-local ID for mount attempts.
+ - log functions to prefix messages with attempt_id if available.
+ - factor out set_thread_mount_request_log_id().
++- add config option to use mount request log id.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/automount.c
++++ autofs-5.0.7/daemon/automount.c
+@@ -116,6 +116,9 @@ void set_thread_mount_request_log_id(str
+ 	unsigned long *attempt_id;
+ 	int status;
+ 
++	if (!defaults_get_use_mount_request_log_id())
++		return;
++
+ 	attempt_id = pthread_getspecific(key_thread_attempt_id);
+ 	if (attempt_id == NULL) {
+ 		attempt_id = (unsigned long *) calloc(1, sizeof(unsigned long));
+--- autofs-5.0.7.orig/include/defaults.h
++++ autofs-5.0.7/include/defaults.h
+@@ -51,6 +51,8 @@
+ #define DEFAULT_USE_HOSTNAME_FOR_MOUNTS  "0"
+ #define DEFAULT_DISABLE_NOT_FOUND_MESSAGE "0"
+ 
++#define DEFAULT_USE_MOUNT_REQUEST_LOG_ID "0"
++
+ /* Config entry flags */
+ #define CONF_NONE			0x00000000
+ #define CONF_ENV			0x00000001
+@@ -169,6 +171,7 @@ const char *defaults_get_auth_conf_file(
+ unsigned int defaults_get_map_hash_table_size(void);
+ unsigned int defaults_use_hostname_for_mounts(void);
+ unsigned int defaults_disable_not_found_message(void);
++unsigned int defaults_get_use_mount_request_log_id(void);
+ 
+ unsigned int conf_amd_mount_section_exists(const char *);
+ char **conf_amd_get_mount_paths(void);
+--- autofs-5.0.7.orig/lib/defaults.c
++++ autofs-5.0.7/lib/defaults.c
+@@ -76,6 +76,8 @@
+ #define NAME_USE_HOSTNAME_FOR_MOUNTS	"use_hostname_for_mounts"
+ #define NAME_DISABLE_NOT_FOUND_MESSAGE	"disable_not_found_message"
+ 
++#define NAME_USE_MOUNT_REQUEST_LOG_ID	"use_mount_request_log_id"
++
+ #define NAME_AMD_ARCH				"arch"
+ #define NAME_AMD_AUTO_ATTRCACHE			"auto_attrcache"
+ #define NAME_AMD_AUTO_DIR			"auto_dir"
+@@ -354,6 +356,11 @@ static int conf_load_autofs_defaults(voi
+ 	if (ret == CFG_FAIL)
+ 		goto error;
+ 
++	ret = conf_update(sec, NAME_USE_MOUNT_REQUEST_LOG_ID,
++			  DEFAULT_USE_MOUNT_REQUEST_LOG_ID, CONF_ENV);
++	if (ret == CFG_FAIL)
++		goto error;
++
+ 	/* LDAP_URI and SEARCH_BASE can occur multiple times */
+ 	while ((co = conf_lookup(sec, NAME_LDAP_URI)))
+ 		conf_delete(co->section, co->name);
+@@ -1832,6 +1839,17 @@ unsigned int defaults_disable_not_found_
+ 
+ 	return res;
+ }
++
++unsigned int defaults_get_use_mount_request_log_id(void)
++{
++	int res;
++
++	res = conf_get_yesno(autofs_gbl_sec, NAME_USE_MOUNT_REQUEST_LOG_ID);
++	if (res < 0)
++		res = atoi(DEFAULT_USE_MOUNT_REQUEST_LOG_ID);
++
++	return res;
++}
+ 
+ unsigned int conf_amd_mount_section_exists(const char *section)
+ {
+--- autofs-5.0.7.orig/man/autofs.conf.5.in
++++ autofs-5.0.7/man/autofs.conf.5.in
+@@ -141,6 +141,12 @@ The original request to add this log mes
+ That produces, IMHO, unnecessary noise in the log so a configuration option
+ has been added to provide the ability to turn it off. The default is "no"
+ to maintain the current behaviour.
++.TP
++.B use_mount_request_log_id
++.br
++Set whether to use a mount request log id so that log entries for specific
++mount requests can be easily identified in logs that have multiple conncurrent
++requests. Default is don't use mount request log ids.
+ .SS LDAP Configuration
+ .P
+ Configuration settings available are:
+--- autofs-5.0.7.orig/redhat/autofs.conf.default.in
++++ autofs-5.0.7/redhat/autofs.conf.default.in
+@@ -71,6 +71,13 @@ mount_nfs_default_protocol = 4
+ #
+ # force_standard_program_map_env = no
+ #
++# use_mount_request_log_id - Set whether to use a mount request log
++#			id so that log entries for specific mount
++#			requests can be easily identified in logs
++#			that have multiple conncurrent requests.
++#
++#use_mount_request_log_id = no
++#
+ # Define base dn for map dn lookup.
+ #
+ # Define server URIs
+--- autofs-5.0.7.orig/samples/autofs.conf.default.in
++++ autofs-5.0.7/samples/autofs.conf.default.in
+@@ -70,6 +70,13 @@ browse_mode = no
+ #
+ # force_standard_program_map_env = no
+ #
++# use_mount_request_log_id - Set whether to use a mount request log
++#			id so that log entries for specific mount
++#			requests can be easily identified in logs
++#			that have multiple conncurrent requests.
++#
++#use_mount_request_log_id = no
++#
+ # Define base dn for map dn lookup.
+ #
+ # Define server URIs

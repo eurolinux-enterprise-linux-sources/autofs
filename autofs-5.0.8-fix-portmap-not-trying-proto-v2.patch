@@ -1,0 +1,59 @@
+autofs-5.0.8 - fix portmap not trying proto v2
+
+From: Ian Kent <raven@themaw.net>
+
+The latest change to fix a problem with getting an exports list
+from a server doesn't try portmap version 2 when trying to get
+a service port number. This causes servers that offer only
+version 2 to not be able to provide a service port number.
+---
+ CHANGELOG      |    1 +
+ lib/rpc_subs.c |   17 ++++++++++++++++-
+ 2 files changed, 17 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -69,6 +69,7 @@
+ - fix fix ipv6 libtirpc getport.
+ - get_nfs_info() should query portmapper if port is not given.
+ - fix rpc_portmap_getport() proto not set.
++- fix protmap not trying proto v2.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/lib/rpc_subs.c
++++ autofs-5.0.7/lib/rpc_subs.c
+@@ -524,10 +524,15 @@ static enum clnt_stat rpc_rpcb_getport(C
+ 			if (rpcerr.re_vers.low > RPCBVERS4)
+ 				return status;
+ 			continue;
++
+ 		case RPC_PROGUNAVAIL:
+ 			continue;
++
++		case RPC_PROGNOTREGISTERED:
++			continue;
++
+ 		default:
+-                        /* Most likely RPC_TIMEDOUT or RPC_CANTRECV */
++			/* Most likely RPC_TIMEDOUT or RPC_CANTRECV */
+ 			return status;
+ 		}
+ 	}
+@@ -575,6 +580,16 @@ static enum clnt_stat rpc_getport(struct
+ 	free(netid);
+ 	free(raddr);
+ 
++	if (status == RPC_PROGNOTREGISTERED) {
++		/* Last chance, version 2 uses a different procedure */
++		rpcvers_t rpcb_version = PMAPVERS;
++		CLNT_CONTROL(client, CLSET_VERS, (void *) &rpcb_version);
++		status = clnt_call(client, PMAPPROC_GETPORT,
++				  (xdrproc_t) xdr_pmap, (caddr_t) parms,
++				  (xdrproc_t) xdr_u_short, (caddr_t) port,
++				  info->timeout);
++	}
++
+ 	return status;
+ }
+ #endif

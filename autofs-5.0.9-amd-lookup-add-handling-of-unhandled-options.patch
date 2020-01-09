@@ -1,0 +1,202 @@
+autofs-5.0.9 - amd lookup add handling of unhandled options
+
+From: Ian Kent <raven@themaw.net>
+
+There are a number of map options that are either not yet implemented
+or aren't planned on being supported.
+
+Add log message feedback for these.
+---
+ modules/amd_parse.y |   84 +++++++++++++++++++++++++++++++++++++++++++++++++--
+ modules/amd_tok.l   |   12 +++++--
+ 2 files changed, 90 insertions(+), 6 deletions(-)
+
+diff --git a/modules/amd_parse.y b/modules/amd_parse.y
+index cd69c49..77adbe5 100644
+--- a/modules/amd_parse.y
++++ b/modules/amd_parse.y
+@@ -28,6 +28,7 @@
+ 
+ #include "automount.h"
+ #include "parse_amd.h"
++#include "log.h"
+ 
+ #define MAX_OPTS_LEN	1024
+ #define MAX_ERR_LEN	512
+@@ -45,6 +46,7 @@ static void local_free_vars(void);
+ 
+ static int amd_error(const char *s);
+ static int amd_notify(const char *s);
++static int amd_info(const char *s);
+ static int amd_msg(const char *s);
+ 
+ static int add_location(void);
+@@ -59,6 +61,7 @@ static struct autofs_point *pap;
+ struct substvar *psv;
+ static char opts[MAX_OPTS_LEN];
+ static void prepend_opt(char *, char *);
++static char msg_buf[MAX_ERR_LEN];
+ 
+ #define YYDEBUG 0
+ 
+@@ -99,6 +102,7 @@ static int amd_fprintf(FILE *, char *, ...);
+ 
+ %token <strtype> MAP_OPTION
+ %token <strtype> MAP_TYPE
++%token <strtype> CACHE_OPTION
+ %token <strtype> FS_TYPE
+ %token <strtype> FS_OPTION
+ %token <strtype> FS_OPT_VALUE
+@@ -259,6 +263,20 @@ option_assignment: MAP_OPTION OPTION_ASSIGN FS_TYPE
+ 			   !strcmp($3, "ext4")) {
+ 			entry.flags |= AMD_MOUNT_TYPE_EXT;
+ 			entry.type = amd_strdup($3);
++		} else if (!strcmp($3, "jfs") ||
++			   !strcmp($3, "linkx") ||
++			   !strcmp($3, "nfsx") ||
++			   !strcmp($3, "nfsl") ||
++			   !strcmp($3, "program") ||
++			   !strcmp($3, "lustre") ||
++			   !strcmp($3, "direct")) {
++			sprintf(msg_buf, "file system type %s is "
++					 "not yet implemented", $3);
++			amd_msg(msg_buf);
++			YYABORT;
++		} else if (!strcmp($3, "cachefs")) {
++			sprintf(msg_buf, "file syatem %s is not "
++					 "supported by autofs, ignored", $3);
+ 		} else {
+ 			amd_notify($1);
+ 			YYABORT;
+@@ -275,7 +293,18 @@ option_assignment: MAP_OPTION OPTION_ASSIGN FS_TYPE
+ 		else if (!strcmp($3, "exec"))
+ 			/* autofs uses "program" for "exec" map type */
+ 			entry.map_type = amd_strdup("program");
+-		else {
++		else if (!strcmp($3, "passwd")) {
++			sprintf(msg_buf, "map type %s is "
++					 "not yet implemented", $3);
++			amd_msg(msg_buf);
++			YYABORT;
++		} else if (!strcmp($3, "ndbm") ||
++			   !strcmp($3, "union")) {
++			sprintf(msg_buf, "map type %s is not "
++					 "supported by autofs", $3);
++			amd_msg(msg_buf);
++			YYABORT;
++		} else {
+ 			amd_notify($1);
+ 			YYABORT;
+ 		}
+@@ -304,7 +333,17 @@ option_assignment: MAP_OPTION OPTION_ASSIGN FS_TYPE
+ 			entry.rfs = amd_strdup($3);
+ 		else if (!strcmp($1, "dev"))
+ 			entry.dev = amd_strdup($3);
+-		else {
++		else if (!strcmp($1, "mount") ||
++			 !strcmp($1, "unmount") ||
++			 !strcmp($1, "umount")) {
++			amd_info("file system type program is not "
++				 "yet implemented, option ignored");
++			YYABORT;
++		} else if (!strcmp($1, "delay") ||
++			   !strcmp($1, "cachedir")) {
++			sprintf(msg_buf, "option %s is not used by autofs", $1);
++			amd_info(msg_buf);
++		} else {
+ 			amd_notify($1);
+ 			YYABORT;
+ 		}
+@@ -326,11 +365,44 @@ option_assignment: MAP_OPTION OPTION_ASSIGN FS_TYPE
+ 			YYABORT;
+ 		}
+ 	}
++	| MAP_OPTION OPTION_ASSIGN CACHE_OPTION
++	{
++		sprintf(msg_buf, "option %s is not used, autofs "
++				 "default caching is always used", $1);
++		amd_info(msg_buf);
++	}
+ 	;
+ 
+ options: OPTION
+ 	{
+-		prepend_opt(opts, $1);
++		if (!strcmp($1, "browsable") ||
++		    !strcmp($1, "fullybrowsable") ||
++		    !strcmp($1, "nounmount") ||
++		    !strcmp($1, "unmount")) {
++			sprintf(msg_buf, "option %s is not currently "
++					 "implemented, ignored", $1);
++			amd_info(msg_buf);
++		} else if (!strncmp($1, "ping=", 5) ||
++			   !strncmp($1, "retry=", 6) ||
++			   !strcmp($1, "public") ||
++			   !strcmp($1, "softlookup") ||
++			   !strcmp($1, "xlatecookie")) {
++			sprintf(msg_buf, "option %s is not used by "
++					 "autofs, ignored", $1);
++			amd_info(msg_buf);
++		} else if (!strncmp($1, "utimeout=", 9)) {
++			if (entry.flags & AMD_MOUNT_TYPE_AUTO) {
++				char *opt = $1;
++				prepend_opt(opts, ++opt);
++			} else {
++				sprintf(msg_buf, "umount timeout can't be "
++						 "used for other than type "
++						 "\"auto\" with autofs, "
++						 "ignored");
++				amd_info(msg_buf);
++			}
++		} else
++			prepend_opt(opts, $1);
+ 	}
+ 	| OPTION COMMA options
+ 	{
+@@ -387,6 +459,12 @@ static int amd_notify(const char *s)
+ 	return(0);
+ }
+ 
++static int amd_info(const char *s)
++{
++	info(pap->logopt, "%s\n", s);
++	return 0;
++}
++
+ static int amd_msg(const char *s)
+ {
+ 	logmsg("%s\n", s);
+diff --git a/modules/amd_tok.l b/modules/amd_tok.l
+index fdc8899..8a6d40c 100644
+--- a/modules/amd_tok.l
++++ b/modules/amd_tok.l
+@@ -94,13 +94,14 @@ OPTS		({OSTR}(=({VSTR}|{QSTR}|{MACRO})+)?)
+ SOPT		(({SSTR}|{QSTR}|{MACRO})+)
+ NOPT		({SSTR}|(({IP4ADDR}(\/{V4MASK})?)|({IP6ADDR}(\/{V6MASK})?)))
+ 
+-MAPOPT		(fs|type|maptype|pref|sublink|delay)
++MAPOPT		(fs|type|maptype|pref|sublink|cache)
+ MNTOPT		(opts|addopts|remopts)
+-FSOPTS		(rhost|rfs|dev|cachedir)
++FSOPTS		(rhost|rfs|dev|cachedir|mount|unmount|umount|delay)
++CHEOPT		(mapdefault|none|inc|re|regexp|all)
+ MAPTYPE		(file|nis|nisplus|ldap|hesiod|exec|ndbm|passwd|union)
+ FSTYPE_LOCAL	(link|linkx|lofs|ext2|ext3|ext4|xfs|jfs|cachefs)
+ FSTYPE_NET	(nfs|nfsx|nfsl|host)
+-FSTYPE		(auto|program|direct|{FSTYPE_LOCAL}|{FSTYPE_NET})
++FSTYPE		(auto|program|direct|lustre|{FSTYPE_LOCAL}|{FSTYPE_NET})
+ 
+ OSSEL		(arch|karch|os|osver|full_os|vendor)
+ HSTSEL		(host|hostd|domain|byte|cluster)
+@@ -204,6 +205,11 @@ CUTSEP		(\|\||\/)
+ 		return MAP_TYPE;
+ 	}
+ 
++	{CHEOPT} {
++		strcpy(amd_lval.strtype, amd_text);
++		return CACHE_OPTION;
++	}
++
+ 	{FOPT} {
+ 		strcpy(amd_lval.strtype, amd_text);
+ 		return FS_OPT_VALUE;

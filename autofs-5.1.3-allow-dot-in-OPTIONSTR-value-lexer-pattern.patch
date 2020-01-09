@@ -1,0 +1,38 @@
+autofs-5.1.3 - allow dot in OPTIONSTR value lexer pattern
+
+From: Ian Kent <raven@themaw.net>
+
+The options string in master map entries doesn't allow dot in the
+string value side of an option assignment. This prevents using an
+option like vers=4.1 to apply to all entries of the map.
+
+Add . to the options value portion of the regular expression used
+for this field.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG        |    1 +
+ lib/master_tok.l |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -255,6 +255,7 @@
+ - fix mount.nfs blocks on first mount.
+ - fix typos in autofs man pages.
+ - fix some man page problems.
++- allow dot in OPTIONSTR value lexer pattern.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/lib/master_tok.l
++++ autofs-5.0.7/lib/master_tok.l
+@@ -91,7 +91,7 @@ OPTWS		[[:blank:]]*
+ NL		\r?\n
+ CONT		\\\n{OPTWS}
+ 
+-OPTIONSTR	([\-]?([[:alpha:]_]([[:alnum:]_\-])*(=(\"?([[:alnum:]_\-\:])+\"?))?)+)
++OPTIONSTR	([\-]?([[:alpha:]_]([[:alnum:]_\-])*(=(\"?([[:alnum:]_\-\:\.])+\"?))?)+)
+ MACROSTR	(-D{OPTWS}([[:alpha:]_]([[:alnum:]_\-\.])*)=([[:alnum:]_\-\.])+)
+ SLASHIFYSTR	(--(no-)?slashify-colons)
+ NUMBER		[0-9]+

@@ -1,0 +1,48 @@
+autofs-5.1.2 - fix possible NULL derefernce
+
+From: Ian Kent <raven@themaw.net>
+
+In modules/mount_autofs.c:mount_mount() a NULL pointer dereference is
+(unlikley but) possible.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG              |    1 +
+ modules/mount_autofs.c |   15 +++++++++------
+ 2 files changed, 10 insertions(+), 6 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -243,6 +243,7 @@
+ - work around sss startup delay.
+ - add sss master map wait config option.
+ - use autofs_point to store expire timeout where possibe.
++- fix possible NULL derefernce.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/mount_autofs.c
++++ autofs-5.0.7/modules/mount_autofs.c
+@@ -280,13 +280,16 @@ int mount_mount(struct autofs_point *ap,
+ 
+ 	if (source->flags & MAP_FLAG_FORMAT_AMD) {
+ 		struct amd_entry *am_entry = __master_find_amdmount(ap, entry->path);
+-		if (am_entry && am_entry->pref) {
+-			nap->pref = am_entry->pref;
+-			am_entry->pref = NULL;
+-		}
+ 
+-		if (am_entry->cache_opts & AMD_CACHE_OPTION_ALL)
+-			nap->flags |= MOUNT_FLAG_AMD_CACHE_ALL;
++		if (am_entry) {
++			if (am_entry->pref) {
++				nap->pref = am_entry->pref;
++				am_entry->pref = NULL;
++			}
++
++			if (am_entry->cache_opts & AMD_CACHE_OPTION_ALL)
++				nap->flags |= MOUNT_FLAG_AMD_CACHE_ALL;
++		}
+ 	}
+ 
+ 	if (handle_mounts_startup_cond_init(&suc)) {

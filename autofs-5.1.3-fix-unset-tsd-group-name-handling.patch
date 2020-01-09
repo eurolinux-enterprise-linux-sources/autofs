@@ -1,0 +1,75 @@
+autofs-5.1.3 - fix unset tsd group name handling
+
+From: Ian Kent <raven@themaw.net>
+
+Commit 1a64a6bbc5 changed set_tsd_user_vars() to the thread specific
+values even if the group name could not be obtained.
+
+But the structure holding the values was not initialized on allocation
+so the group field might not be NULL when no group name is available.
+
+Also the macro addition and removal functions didn't properly handle a
+macro value of NULL.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+Reported-by: Donald Buczek <buczek@molgen.mpg.de>
+---
+ CHANGELOG    |    1 +
+ lib/macros.c |    8 +++++---
+ lib/mounts.c |    1 +
+ 3 files changed, 7 insertions(+), 3 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -250,6 +250,7 @@
+ - increase worker thread per-thread stack size.
+ - limit getgrgid_r() buffer size.
+ - add congigure option for limiting getgrgid_r() stack usage.
++- fix unset tsd group name handling.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/lib/macros.c
++++ autofs-5.0.7/lib/macros.c
+@@ -281,18 +281,20 @@ macro_addvar(struct substvar *table, con
+ 	}
+ 
+ 	if (lv) {
+-		char *this = malloc(strlen(value) + 1);
++		const char *val = value ? value : "";
++		char *this = malloc(strlen(val) + 1);
+ 		if (!this) {
+ 			lv = table;
+ 			goto done;
+ 		}
+-		strcpy(this, value);
++		strcpy(this, val);
+ 		free(lv->val);
+ 		lv->val = this;
+ 		if (lv != table)
+ 			lv = table;
+ 	} else {
+ 		struct substvar *new;
++		const char *this = value ? value : "";
+ 		char *def, *val;
+ 
+ 		def = strdup(str);
+@@ -302,7 +304,7 @@ macro_addvar(struct substvar *table, con
+ 		}
+ 		def[len] = '\0';
+ 
+-		val = strdup(value);
++		val = strdup(this);
+ 		if (!val) {
+ 			lv = table;
+ 			free(def);
+--- autofs-5.0.7.orig/lib/mounts.c
++++ autofs-5.0.7/lib/mounts.c
+@@ -1456,6 +1456,7 @@ void set_tsd_user_vars(unsigned int logo
+ 		error(logopt, "failed alloc tsv storage");
+ 		return;
+ 	}
++	memset(tsv, 0, sizeof(struct thread_stdenv_vars));
+ 
+ 	tsv->uid = uid;
+ 	tsv->gid = gid;

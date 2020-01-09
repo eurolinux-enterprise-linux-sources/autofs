@@ -1,0 +1,160 @@
+autofs-5.1.0-beta1 - fix wildcard key lookup
+
+From: Ian Kent <raven@themaw.net>
+
+The changes to key matching caused wildcard key lookups for autofs
+format maps to fail.
+---
+ CHANGELOG                |    1 +
+ modules/lookup_ldap.c    |   10 ++++------
+ modules/lookup_nisplus.c |   11 +++++------
+ modules/lookup_program.c |    4 ++--
+ modules/lookup_yp.c      |    6 ++----
+ 5 files changed, 14 insertions(+), 18 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -109,6 +109,7 @@
+ - fix deadlock in init_ldap_connection.
+ - extend fix for crash due to thread unsafe use of libldap.
+ - add amd map format parser.
++- fix wildcard key lookup.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/lookup_ldap.c
++++ autofs-5.0.7/modules/lookup_ldap.c
+@@ -3349,12 +3349,9 @@ static int match_key(struct autofs_point
+ 	else
+ 		ret = lookup_one(ap, source, key, key_len, ctxt);
+ 
+-	if (ret == CHE_OK || ret == CHE_UPDATED)
++	if (ret == CHE_OK || ret == CHE_UPDATED || !is_amd_format)
+ 		return ret;
+ 
+-	if (!is_amd_format)
+-		return CHE_FAIL;
+-
+ 	lkp_key = strdup(key);
+ 	if (!lkp_key) {
+ 		char *estr = strerror_r(errno, buf, MAX_ERR_BUF);
+@@ -3399,6 +3396,7 @@ static int check_map_indirect(struct aut
+ 			      char *key, int key_len,
+ 			      struct lookup_context *ctxt)
+ {
++	unsigned int is_amd_format = source->flags & MAP_FLAG_FORMAT_AMD;
+ 	struct mapent_cache *mc;
+ 	struct mapent *me;
+ 	time_t now = time(NULL);
+@@ -3410,7 +3408,7 @@ static int check_map_indirect(struct aut
+ 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cur_state);
+ 
+ 	pthread_mutex_lock(&ap->entry->current_mutex);
+-	if (source->flags & MAP_FLAG_FORMAT_AMD) {
++	if (is_amd_format) {
+ 		unsigned long timestamp = get_amd_timestamp(ctxt);
+ 		if (timestamp > ctxt->timestamp) {
+ 			ctxt->timestamp = timestamp;
+@@ -3457,7 +3455,7 @@ static int check_map_indirect(struct aut
+ 	}
+ 	pthread_setcancelstate(cur_state, NULL);
+ 
+-	if (!(source->flags & MAP_FLAG_FORMAT_AMD)) {
++	if (!is_amd_format) {
+ 		/*
+ 		 * Check for map change and update as needed for
+ 		 * following cache lookup.
+--- autofs-5.0.7.orig/modules/lookup_nisplus.c
++++ autofs-5.0.7/modules/lookup_nisplus.c
+@@ -339,6 +339,7 @@ static int match_key(struct autofs_point
+ 		     const char *key, int key_len,
+ 		     struct lookup_context *ctxt)
+ {
++	unsigned int is_amd_format = source->flags & MAP_FLAG_FORMAT_AMD;
+ 	char buf[MAX_ERR_BUF];
+ 	char *lkp_key;
+ 	char *prefix;
+@@ -347,12 +348,9 @@ static int match_key(struct autofs_point
+ 	ret = lookup_one(ap, source, key, key_len, ctxt);
+ 	if (ret < 0)
+ 		return ret;
+-	if (ret == CHE_OK || ret == CHE_UPDATED)
++	if (ret == CHE_OK || ret == CHE_UPDATED || is_amd_format)
+ 		return ret;
+ 
+-	if (!(source->flags & MAP_FLAG_FORMAT_AMD))
+-		return CHE_FAIL;
+-
+ 	lkp_key = strdup(key);
+ 	if (!lkp_key) {
+ 		char *estr = strerror_r(errno, buf, MAX_ERR_BUF);
+@@ -504,6 +502,7 @@ static int check_map_indirect(struct aut
+ 			      char *key, int key_len,
+ 			      struct lookup_context *ctxt)
+ {
++	unsigned int is_amd_format = source->flags & MAP_FLAG_FORMAT_AMD;
+ 	struct mapent_cache *mc;
+ 	struct mapent *me, *exists;
+ 	time_t now = time(NULL);
+@@ -512,7 +511,7 @@ static int check_map_indirect(struct aut
+ 
+ 	mc = source->mc;
+ 
+-	if (source->flags & MAP_FLAG_FORMAT_AMD) {
++	if (is_amd_format) {
+ 		/* Check for a /defaults entry to update the map source */
+ 		if (lookup_amd_defaults(ap, source, ctxt) == CHE_FAIL) {
+ 			warn(ap->logopt, MODPREFIX
+@@ -559,7 +558,7 @@ static int check_map_indirect(struct aut
+ 		}
+ 		me = cache_lookup_next(mc, me);
+ 	}
+-	if (source->flags & MAP_FLAG_FORMAT_AMD)
++	if (is_amd_format)
+ 		exists = match_cached_key(ap, MODPREFIX, source, key);
+ 	else
+ 		exists = cache_lookup_distinct(mc, key);
+--- autofs-5.0.7.orig/modules/lookup_program.c
++++ autofs-5.0.7/modules/lookup_program.c
+@@ -382,7 +382,7 @@ static int match_key(struct autofs_point
+ 	char *prefix;
+ 	int ret;
+ 
+-	if (source->flags & MAP_FLAG_FORMAT_AMD) {
++	if (is_amd_format) {
+ 		ret = lookup_amd_defaults(ap, source, ctxt);
+ 		if (ret != NSS_STATUS_SUCCESS) {
+ 			warn(ap->logopt,
+@@ -420,7 +420,7 @@ static int match_key(struct autofs_point
+ 	ment = lookup_one(ap, lkp_key, lkp_len, ctxt);
+ 	if (ment) {
+ 		char *start = ment;
+-		if (source->flags & MAP_FLAG_FORMAT_AMD) {
++		if (is_amd_format) {
+ 			start = ment + lkp_len;
+ 			while (isblank(*start))
+ 				start++;
+--- autofs-5.0.7.orig/modules/lookup_yp.c
++++ autofs-5.0.7/modules/lookup_yp.c
+@@ -457,6 +457,7 @@ static int match_key(struct autofs_point
+ 		     const char *key, int key_len,
+ 		     struct lookup_context *ctxt)
+ {
++	unsigned int is_amd_format = source->flags & MAP_FLAG_FORMAT_AMD;
+ 	char buf[MAX_ERR_BUF];
+ 	char *lkp_key;
+ 	char *prefix;
+@@ -465,12 +466,9 @@ static int match_key(struct autofs_point
+ 	ret = lookup_one(ap, source, key, strlen(key), ctxt);
+ 	if (ret < 0)
+ 		return ret;
+-	if (ret == CHE_OK || ret == CHE_UPDATED)
++	if (ret == CHE_OK || ret == CHE_UPDATED || !is_amd_format)
+ 		return ret;
+ 
+-	if (!(source->flags & MAP_FLAG_FORMAT_AMD))
+-		return CHE_FAIL;
+-
+ 	lkp_key = strdup(key);
+ 	if (!lkp_key) {
+ 		char *estr = strerror_r(errno, buf, MAX_ERR_BUF);

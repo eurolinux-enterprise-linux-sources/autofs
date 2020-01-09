@@ -1,0 +1,43 @@
+autofs-5.0.7 - fix master map mount options matching
+
+From: Ian Kent <raven@themaw.net>
+
+The master map options pattern matching is fairly primitive since it
+doesn't need to be very sophisticated. The current mount option pattern
+matching can't match mount options with quotes or embedded colons and so
+it can't pass these options through as a global options string.
+
+But it must be able to match a fairly large class of strings, including
+the above case, so they can be passed through as global options. Of
+course it can't try and validate them since it can't know what mount type
+they may be used with.
+---
+ CHANGELOG        |    1 +
+ lib/master_tok.l |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/CHANGELOG b/CHANGELOG
+index 1156cc9..00eaff2 100644
+--- a/CHANGELOG
++++ b/CHANGELOG
+@@ -45,6 +45,7 @@
+ - add enable sloppy mount option to configure.
+ - fix interface address null check.
+ - dont probe rdma mounts.
++- fix master map mount options matching.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+diff --git a/lib/master_tok.l b/lib/master_tok.l
+index f9b4e55..8d1f1a2 100644
+--- a/lib/master_tok.l
++++ b/lib/master_tok.l
+@@ -91,7 +91,7 @@ OPTWS		[[:blank:]]*
+ NL		\r?\n
+ CONT		\\\n{OPTWS}
+ 
+-OPTIONSTR	([\-]?([[:alpha:]_]([[:alnum:]_\-])*(=([[:alnum:]_\-])+)*)+)
++OPTIONSTR	([\-]?([[:alpha:]_]([[:alnum:]_\-])*(=(\"?([[:alnum:]_\-\:])+\"?))?)+)
+ MACROSTR	(-D{OPTWS}([[:alpha:]_]([[:alnum:]_\-\.])*)=([[:alnum:]_\-\.])+)
+ SLASHIFYSTR	(--(no-)?slashify-colons)
+ NUMBER		[0-9]+

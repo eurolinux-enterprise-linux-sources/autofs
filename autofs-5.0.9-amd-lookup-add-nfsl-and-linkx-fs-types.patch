@@ -1,0 +1,123 @@
+autofs-5.0.9 - amd lookup add nfsl and linkx fs types
+
+From: Ian Kent <raven@themaw.net>
+
+
+---
+ modules/amd_parse.y |    8 ++++++--
+ modules/parse_amd.c |   54 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 60 insertions(+), 2 deletions(-)
+
+diff --git a/modules/amd_parse.y b/modules/amd_parse.y
+index 77adbe5..1d4a0a3 100644
+--- a/modules/amd_parse.y
++++ b/modules/amd_parse.y
+@@ -246,9 +246,15 @@ option_assignment: MAP_OPTION OPTION_ASSIGN FS_TYPE
+ 			   !strcmp($3, "nfs4")) {
+ 			entry.flags |= AMD_MOUNT_TYPE_NFS;
+ 			entry.type = amd_strdup($3);
++		} else if (!strcmp($3, "nfsl")) {
++			entry.flags |= AMD_MOUNT_TYPE_NFSL;
++			entry.type = amd_strdup($3);
+ 		} else if (!strcmp($3, "link")) {
+ 			entry.flags |= AMD_MOUNT_TYPE_LINK;
+ 			entry.type = amd_strdup($3);
++		} else if (!strcmp($3, "linkx")) {
++			entry.flags |= AMD_MOUNT_TYPE_LINKX;
++			entry.type = amd_strdup($3);
+ 		} else if (!strcmp($3, "host")) {
+ 			entry.flags |= AMD_MOUNT_TYPE_HOST;
+ 			entry.type = amd_strdup($3);
+@@ -264,9 +270,7 @@ option_assignment: MAP_OPTION OPTION_ASSIGN FS_TYPE
+ 			entry.flags |= AMD_MOUNT_TYPE_EXT;
+ 			entry.type = amd_strdup($3);
+ 		} else if (!strcmp($3, "jfs") ||
+-			   !strcmp($3, "linkx") ||
+ 			   !strcmp($3, "nfsx") ||
+-			   !strcmp($3, "nfsl") ||
+ 			   !strcmp($3, "program") ||
+ 			   !strcmp($3, "lustre") ||
+ 			   !strcmp($3, "direct")) {
+diff --git a/modules/parse_amd.c b/modules/parse_amd.c
+index 4cebce8..7e04beb 100644
+--- a/modules/parse_amd.c
++++ b/modules/parse_amd.c
+@@ -955,6 +955,23 @@ out:
+ 	return ret;
+ }
+ 
++static int do_linkx_mount(struct autofs_point *ap, const char *name,
++			  struct amd_entry *entry, unsigned int flags)
++{
++	struct stat st;
++	char *target;
++
++	if (entry->sublink)
++		target = entry->sublink;
++	else
++		target = entry->fs;
++
++	if (lstat(target, &st) < 0)
++		return errno;
++
++	return do_link_mount(ap, name, entry, flags);
++}
++
+ static int do_generic_mount(struct autofs_point *ap, const char *name,
+ 			    struct amd_entry *entry, const char *target,
+ 			    unsigned int flags)
+@@ -1020,6 +1037,35 @@ out:
+ 	return ret;
+ }
+ 
++static int do_nfsl_mount(struct autofs_point *ap, const char *name,
++			 struct amd_entry *entry, struct substvar *sv,
++			 unsigned int flags)
++{
++	const struct substvar *host, *hostd;
++	struct stat st;
++	char *target;
++
++	host = macro_findvar(sv, "host", 4);
++	if (!host)
++		return do_nfs_mount(ap, name, entry, flags);
++	hostd = macro_findvar(sv, "hostd", 5);
++	if (!hostd || !*hostd->val)
++		return do_nfs_mount(ap, name, entry, flags);
++
++	if (entry->sublink)
++		target = entry->sublink;
++	else
++		target = entry->fs;
++
++	if (strcasecmp(host->val, entry->rhost) ||
++	    strcasecmp(hostd->val, entry->rhost))
++		return do_nfs_mount(ap, name, entry, flags);
++	else if (lstat(target, &st) < 0)
++		return do_nfs_mount(ap, name, entry, flags);
++
++	return do_link_mount(ap, name, entry, flags);
++}
++
+ static int do_host_mount(struct autofs_point *ap, const char *name,
+ 			 struct amd_entry *entry, struct map_source *source,
+ 			 unsigned int flags)
+@@ -1078,10 +1124,18 @@ static int amd_mount(struct autofs_point *ap, const char *name,
+ 		ret = do_nfs_mount(ap, name, entry, flags);
+ 		break;
+ 
++	case AMD_MOUNT_TYPE_NFSL:
++		ret = do_nfsl_mount(ap, name, entry, sv, flags);
++		break;
++
+ 	case AMD_MOUNT_TYPE_LINK:
+ 		ret = do_link_mount(ap, name, entry, flags);
+ 		break;
+ 
++	case AMD_MOUNT_TYPE_LINKX:
++		ret = do_linkx_mount(ap, name, entry, flags);
++		break;
++
+ 	case AMD_MOUNT_TYPE_HOST:
+ 		ret = do_host_mount(ap, name, entry, source, flags);
+ 		break;

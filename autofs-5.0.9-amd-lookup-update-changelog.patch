@@ -1,0 +1,19 @@
+autofs-5.0.9 - amd lookup update changelog
+
+From: Ian Kent <raven@themaw.net>
+
+
+---
+ CHANGELOG |    1 +
+ 1 file changed, 1 insertion(+)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -108,6 +108,7 @@
+ - fix crash due to thread unsafe use of libldap.
+ - fix deadlock in init_ldap_connection.
+ - extend fix for crash due to thread unsafe use of libldap.
++- add amd map format parser.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================

@@ -1,0 +1,23 @@
+autofs-5.0.8 - remove macro debug prints
+
+From: Ian Kent <raven@themaw.net>
+
+Remove a couple of missed debugging prints from macro_setenv();
+---
+ lib/macros.c |    3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/lib/macros.c b/lib/macros.c
+index d7c392f..c858f41 100644
+--- a/lib/macros.c
++++ b/lib/macros.c
+@@ -437,9 +437,6 @@ void macro_setenv(struct substvar *table)
+ 		sv = sv->next;
+ 	}
+ 
+-	error(LOGOPT_ANY, "table %p", table);
+-	dump_table(table);
+-
+ 	/* Next set environment from the local table */
+ 	while (lv) {
+ 		if (lv->def)

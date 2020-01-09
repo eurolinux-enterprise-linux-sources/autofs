@@ -1,0 +1,46 @@
+autofs-5.0.7 - don't override LDFLAGS in make rules
+
+From: Ian Kent <ikent@redhat.com>
+
+Ensure that externally defined LDFLAGS is not overridden.
+---
+ CHANGELOG      |    1 +
+ Makefile.rules |    6 +++---
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+diff --git a/CHANGELOG b/CHANGELOG
+index 5d90139..37eac72 100644
+--- a/CHANGELOG
++++ b/CHANGELOG
+@@ -53,6 +53,7 @@
+ - fix probe each nfs version in turn for singleton mounts.
+ - misc man page fixes.
+ - fix add null check in parse_server_string().
++- don't override LDFLAGS in make rules.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+diff --git a/Makefile.rules b/Makefile.rules
+index f2ba386..6b5b2bd 100644
+--- a/Makefile.rules
++++ b/Makefile.rules
+@@ -24,16 +24,16 @@ endif
+ 
+ ifdef DEBUG
+ CFLAGS    ?= -g -Wall -DDEBUG
+-LDFLAGS   = -g
++LDFLAGS   ?= -g
+ STRIP     = :
+ else
+ ifdef DONTSTRIP
+ CFLAGS    ?= -O2 -g
+-LDFLAGS   = -g
++LDFLAGS   ?= -g
+ STRIP     = :
+ else
+ CFLAGS    ?= -O2 -Wall
+-LDFLAGS   = -s
++LDFLAGS   ?= -s
+ STRIP     = strip --strip-debug
+ endif
+ endif

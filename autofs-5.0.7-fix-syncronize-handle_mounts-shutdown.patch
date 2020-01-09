@@ -1,0 +1,36 @@
+autofs-5.0.7 - fix syncronize handle_mounts() shutdown
+
+From: Ian Kent <raven@themaw.net>
+
+A recent change to fix a problem where automount would exit when re-reading
+the master map if more than on entry had been removed causes automount to
+ignore HUP signals if the mount list is empty.
+
+Removing that check and testing shows that the remainder of the change still
+fixes the original problem.
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -56,6 +56,7 @@
+ - don't override LDFLAGS in make rules.
+ - fix a couple of compiler warnings.
+ - add after sssd dependency to unit file.
++- fix syncronize handle_mounts() shutdown.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/automount.c
++++ autofs-5.0.7/daemon/automount.c
+@@ -1286,7 +1286,7 @@ static int do_hup_signal(struct master *
+ 
+ 	master_mutex_lock();
+ 	/* Already doing a map read or shutdown or no mounts */
+-	if (master->reading || list_empty(&master->mounts)) {
++	if (master->reading) {
+ 		status = pthread_mutex_unlock(&mrc.mutex);
+ 		if (status)
+ 			fatal(status);

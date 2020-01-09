@@ -1,0 +1,70 @@
+autofs-5.0.7 - add short host name standard marco variable
+
+From: Ian Kent <raven@themaw.net>
+
+Sometimes the short hostname (without the domain part) could be useful.
+Add this to the standard additional macro variables, in particular, to
+compliment the ${HOST} macro.
+---
+ CHANGELOG           |    1 +
+ man/autofs.5        |    2 +-
+ modules/parse_sun.c |   13 +++++++++++++
+ 3 files changed, 15 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -77,6 +77,7 @@
+ - fix fix options compare.
+ - fix max() declaration.
+ - setup program map env from macro table.
++- add short host name standard marco variable.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/man/autofs.5
++++ autofs-5.0.7/man/autofs.5
+@@ -170,7 +170,7 @@ UID	The user login ID
+ GROUP	The user group name
+ GID	The user group ID
+ HOME	The user home directory
+-HOST	Hostname (uname -n)
++SHOST	Short hostname (domain part removed if present)
+ .fi
+ .RE
+ .sp
+--- autofs-5.0.7.orig/modules/parse_sun.c
++++ autofs-5.0.7/modules/parse_sun.c
+@@ -107,6 +107,7 @@ static struct substvar *addstdenv(struct
+ 
+ 	tsv = pthread_getspecific(key_thread_stdenv_vars);
+ 	if (tsv) {
++		struct substvar *mv;
+ 		int ret;
+ 		long num;
+ 
+@@ -121,6 +122,17 @@ static struct substvar *addstdenv(struct
+ 		list = macro_addvar(list, "USER", 4, tsv->user);
+ 		list = macro_addvar(list, "GROUP", 5, tsv->group);
+ 		list = macro_addvar(list, "HOME", 4, tsv->home);
++		mv = macro_findvar(list, "HOST", 4);
++		if (mv) {
++			char *shost = strdup(mv->val);
++			if (shost) {
++				char *dot = strchr(shost, '.');
++				if (dot)
++					*dot = '\0';
++				list = macro_addvar(list, "SHOST", 5, shost);
++				free(shost);
++			}
++		}
+ 	}
+ 	return list;
+ }
+@@ -134,6 +146,7 @@ static struct substvar *removestdenv(str
+ 	list = macro_removevar(list, "HOME", 4);
+ 	list = macro_removevar(list, "GID", 3);
+ 	list = macro_removevar(list, "GROUP", 5);
++	list = macro_removevar(list, "SHOST", 5);
+ 	return list;
+ }
+ 

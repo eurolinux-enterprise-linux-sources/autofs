@@ -1,0 +1,242 @@
+autofs-5.0.8 - fix macro_addvar() and move init to main thread
+
+From: Ian Kent <raven@themaw.net>
+
+- move macro table initialization to the main thread.
+- change to using malloc() instead of realloc() in macro_global_addvar()
+  and macro_addvar().
+- fix possible incorrect return from macro_addvar().
+---
+ CHANGELOG           |    1 +
+ daemon/automount.c  |   16 ++++++++++++++++
+ lib/macros.c        |   25 ++++++++++++++++++++-----
+ modules/parse_sun.c |    9 ---------
+ 4 files changed, 37 insertions(+), 14 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -89,6 +89,7 @@
+ - fix symlink expire.
+ - fix master map type check.
+ - fix bad mkdir permission on create.
++- fix macro_addvar() and move init to main thread.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/automount.c
++++ autofs-5.0.7/daemon/automount.c
+@@ -2129,6 +2129,9 @@ int main(int argc, char *argv[])
+ 			program);
+ #endif
+ 
++	/* Get processor information for predefined escapes */
++	macro_init();
++
+ 	if (dumpmaps) {
+ 		struct master_mapent *entry;
+ 		struct list_head *head, *p;
+@@ -2152,6 +2155,7 @@ int main(int argc, char *argv[])
+ 			master_list = master_new(master, timeout, ghost);
+ 		if (!master_list) {
+ 			printf("%s: can't create master map", program);
++			macro_free_global_table();
+ 			exit(1);
+ 		}
+ 
+@@ -2163,6 +2167,7 @@ int main(int argc, char *argv[])
+ 		if (!nc) {
+ 			printf("%s: failed to init null map cache for %s",
+ 				program, master_list->name);
++			macro_free_global_table();
+ 			exit(1);
+ 		}
+ 		master_list->nc = nc;
+@@ -2187,6 +2192,7 @@ int main(int argc, char *argv[])
+ 			master_free_mapent(entry);
+ 		}
+ 		master_kill(master_list);
++		macro_free_global_table();
+ 
+ 		exit(0);
+ 	}
+@@ -2198,6 +2204,7 @@ int main(int argc, char *argv[])
+ 
+ 	if (!master_list) {
+ 		printf("%s: can't create master map %s", program, argv[0]);
++		macro_free_global_table();
+ 		exit(1);
+ 	}
+ 
+@@ -2209,6 +2216,7 @@ int main(int argc, char *argv[])
+ 		res = write(start_pipefd[1], pst_stat, sizeof(*pst_stat));
+ 		close(start_pipefd[1]);
+ 		release_flag_file();
++		macro_free_global_table();
+ 		exit(1);
+ 	}
+ 
+@@ -2218,6 +2226,7 @@ int main(int argc, char *argv[])
+ 		res = write(start_pipefd[1], pst_stat, sizeof(*pst_stat));
+ 		close(start_pipefd[1]);
+ 		release_flag_file();
++		macro_free_global_table();
+ 		exit(1);
+ 	}
+ 
+@@ -2228,6 +2237,7 @@ int main(int argc, char *argv[])
+ 		res = write(start_pipefd[1], pst_stat, sizeof(*pst_stat));
+ 		close(start_pipefd[1]);
+ 		release_flag_file();
++		macro_free_global_table();
+ 		exit(1);
+ 	}
+ 
+@@ -2239,6 +2249,7 @@ int main(int argc, char *argv[])
+ 		res = write(start_pipefd[1], pst_stat, sizeof(*pst_stat));
+ 		close(start_pipefd[1]);
+ 		release_flag_file();
++		macro_free_global_table();
+ 		exit(1);
+ 	}
+ #endif
+@@ -2257,6 +2268,7 @@ int main(int argc, char *argv[])
+ 		res = write(start_pipefd[1], pst_stat, sizeof(*pst_stat));
+ 		close(start_pipefd[1]);
+ 		release_flag_file();
++		macro_free_global_table();
+ 		exit(1);
+ 	}
+ 
+@@ -2268,6 +2280,7 @@ int main(int argc, char *argv[])
+ 		res = write(start_pipefd[1], pst_stat, sizeof(*pst_stat));
+ 		close(start_pipefd[1]);
+ 		release_flag_file();
++		macro_free_global_table();
+ 		exit(1);
+ 	}
+ 
+@@ -2277,6 +2290,7 @@ int main(int argc, char *argv[])
+ 		res = write(start_pipefd[1], pst_stat, sizeof(*pst_stat));
+ 		close(start_pipefd[1]);
+ 		release_flag_file();
++		macro_free_global_table();
+ 		exit(1);
+ 	}
+ 
+@@ -2299,6 +2313,7 @@ int main(int argc, char *argv[])
+ 		res = write(start_pipefd[1], pst_stat, sizeof(*pst_stat));
+ 		close(start_pipefd[1]);
+ 		release_flag_file();
++		macro_free_global_table();
+ 		exit(3);
+ 	}
+ 
+@@ -2323,6 +2338,7 @@ int main(int argc, char *argv[])
+ 	}
+ 	closelog();
+ 	release_flag_file();
++	macro_free_global_table();
+ 
+ #ifdef TIRPC_WORKAROUND
+ 	if (dh_tirpc)
+--- autofs-5.0.7.orig/lib/macros.c
++++ autofs-5.0.7/lib/macros.c
+@@ -35,6 +35,7 @@ static struct substvar
+ };
+ 
+ static struct substvar *system_table = &sv_osvers;
++static unsigned int macro_init_done = 0;
+ 
+ static pthread_mutex_t table_mutex = PTHREAD_MUTEX_INITIALIZER;
+ static pthread_mutex_t macro_mutex = PTHREAD_MUTEX_INITIALIZER;
+@@ -62,6 +63,12 @@ void dump_table(struct substvar *table)
+ /* Get processor information for predefined macro definitions */
+ void macro_init(void)
+ {
++	macro_lock();
++	if (macro_init_done) {
++		macro_unlock();
++		return;
++	}
++
+ 	uname(&un);
+ 	/*
+ 	 * uname -p is not defined on Linux.  Make it the same as
+@@ -71,6 +78,10 @@ void macro_init(void)
+ 	if (processor[0] == 'i' && processor[1] >= '3' &&
+ 		!strcmp(processor + 2, "86"))
+ 		processor[1] = '3';
++
++	macro_init_done = 1;
++	macro_unlock();
++	return;
+ }
+ 
+ int macro_is_systemvar(const char *str, int len)
+@@ -118,10 +129,11 @@ int macro_global_addvar(const char *str,
+ 	}
+ 
+ 	if (sv && !sv->readonly) {
+-		char *this = realloc(sv->val, strlen(value) + 1);
++		char *this = malloc(strlen(value) + 1);
+ 		if (!this)
+ 			goto done;
+-		strcat(this, value);
++		strcpy(this, value);
++		free(sv->val);
+ 		sv->val = this;
+ 		ret = 1;
+ 	} else {
+@@ -213,13 +225,16 @@ macro_addvar(struct substvar *table, con
+ 	}
+ 
+ 	if (lv) {
+-		char *this = realloc(lv->val, strlen(value) + 1);
++		char *this = malloc(strlen(value) + 1);
+ 		if (!this) {
+ 			lv = table;
+ 			goto done;
+ 		}
+-		strcat(this, value);
++		strcpy(this, value);
++		free(lv->val);
+ 		lv->val = this;
++		if (lv != table)
++			lv = table;
+ 	} else {
+ 		struct substvar *new;
+ 		char *def, *val;
+@@ -413,7 +428,7 @@ macro_findvar(const struct substvar *tab
+ 	etmp[len]='\0';
+ 
+ 	if ((value=getenv(etmp)) != NULL) {
+-		lv_var = macro_addvar(table, str, len, value);
++		lv_var = macro_addvar((struct substvar *) table, str, len, value);
+ 		return(lv_var);
+ 	}
+ #endif
+--- autofs-5.0.7.orig/modules/parse_sun.c
++++ autofs-5.0.7/modules/parse_sun.c
+@@ -41,7 +41,6 @@ int parse_version = AUTOFS_PARSE_VERSION
+ 
+ static struct mount_mod *mount_nfs = NULL;
+ static int init_ctr = 0;
+-static int macro_init_done = 0;
+ static pthread_mutex_t instance_mutex = PTHREAD_MUTEX_INITIALIZER;
+ 
+ static void instance_mutex_lock(void)
+@@ -243,14 +242,6 @@ int parse_init(int argc, const char *con
+ 	int i, bval;
+ 	unsigned int append_options;
+ 
+-	/* Get processor information for predefined escapes */
+-	macro_lock();
+-	if (!macro_init_done) {
+-		macro_init_done = 1;
+-		macro_init();
+-	}
+-	macro_unlock();
+-
+ 	/* Set up context and escape chain */
+ 
+ 	if (!(ctxt = (struct parse_context *) malloc(sizeof(struct parse_context)))) {

@@ -1,0 +1,130 @@
+autofs-5.1.2 - add function conf_amd_get_mount_paths()
+
+From: Ian Kent <raven@themaw.net>
+
+Add configuration function to get an array of amd mount section
+paths.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 
+ include/defaults.h |    1 
+ lib/defaults.c     |   80 +++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 82 insertions(+)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -226,6 +226,7 @@
+ - add ref counting to struct map_source.
+ - add support for amd browsable option.
+ - add function conf_amd_get_map_name().
++- add function conf_amd_get_mount_paths().
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/include/defaults.h
++++ autofs-5.0.7/include/defaults.h
+@@ -171,6 +171,7 @@ unsigned int defaults_use_hostname_for_m
+ unsigned int defaults_disable_not_found_message(void);
+ 
+ unsigned int conf_amd_mount_section_exists(const char *);
++char **conf_amd_get_mount_paths(void);
+ char *conf_amd_get_arch(void);
+ char *conf_amd_get_karch(void);
+ char *conf_amd_get_os(void);
+--- autofs-5.0.7.orig/lib/defaults.c
++++ autofs-5.0.7/lib/defaults.c
+@@ -763,6 +763,81 @@ static struct conf_option *conf_lookup(c
+ 	return co;
+ }
+ 
++static char **conf_enumerate_amd_mount_sections(void)
++{
++	struct conf_option *this;
++	unsigned int count;
++	char **paths;
++	char *last;
++	int i, j;
++
++	last = NULL;
++	count = 0;
++	for (i = 0; i < CFG_TABLE_SIZE; i++) {
++		if (!config->hash[i])
++			continue;
++
++		this = config->hash[i];
++		while (this) {
++			/* Only amd mount section names begin with '/' */
++			if (*this->section != '/') {
++				this = this->next;
++				continue;
++			}
++
++			if (!last ||
++			   strcmp(this->section, last))
++				count ++;
++			last = this->section;
++			this = this->next;
++		}
++	}
++
++	if (!count)
++		return NULL;
++
++	paths = (char **) malloc(((count + 1) * sizeof(char *)));
++	if (!paths)
++		return NULL;
++	memset(paths, 0, ((count + 1) * sizeof(char *)));
++
++	last = NULL;
++	j = 0;
++
++	for (i = 0; i < CFG_TABLE_SIZE; i++) {
++		if (!config->hash[i])
++			continue;
++
++		this = config->hash[i];
++		while (this) {
++			/* Only amd mount section names begin with '/' */
++			if (*this->section != '/') {
++				this = this->next;
++				continue;
++			}
++
++			if (!last ||
++			    strcmp(this->section, last)) {
++				char *path = strdup(this->section);
++				if (!path)
++					goto fail;
++				paths[j++] = path;
++			}
++			last = this->section;
++			this = this->next;
++		}
++	}
++
++	return paths;
++
++fail:
++	i = 0;
++	while (paths[i])
++		free(paths[i++]);
++	free(paths);
++	return NULL;
++}
++
+ static unsigned int conf_section_exists(const char *section)
+ {
+ 	struct conf_option *co;
+@@ -1758,6 +1833,11 @@ unsigned int conf_amd_mount_section_exis
+ 	return conf_section_exists(section);
+ }
+ 
++char **conf_amd_get_mount_paths(void)
++{
++	return conf_enumerate_amd_mount_sections();
++}
++
+ char *conf_amd_get_arch(void)
+ {
+ 	return conf_get_string(amd_gbl_sec, NAME_AMD_ARCH);

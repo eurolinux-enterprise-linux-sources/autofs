@@ -1,0 +1,26 @@
+autofs-5.0.7 - add null check in parse_server_string()
+
+From: Ian Kent <raven@themaw.net>
+
+Add an error check for the case there's no ':' server name delimiter in
+parse_server_string().
+---
+ modules/lookup_ldap.c |    5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/modules/lookup_ldap.c b/modules/lookup_ldap.c
+index 17cbe9a..a59de92 100644
+--- a/modules/lookup_ldap.c
++++ b/modules/lookup_ldap.c
+@@ -1212,6 +1212,11 @@ static int parse_server_string(unsigned logopt, const char *url, struct lookup_c
+ 		/* Isolate the server. Include the port spec */
+ 		if (*ptr != '[')
+ 			q = strchr(ptr, ':');
++			if (!q) {
++				crit(logopt, MODPREFIX
++				     "LDAP server name not found in %s", ptr);
++				return 0;
++			}
+ 		else {
+ 			q = ++ptr;
+ 			while (*q == ':' || isxdigit(*q))

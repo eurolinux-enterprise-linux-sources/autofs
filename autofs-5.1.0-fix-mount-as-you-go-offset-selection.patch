@@ -1,0 +1,84 @@
+autofs-5.1.0 - fix mount as you go offset selection
+
+From: Ian Kent <raven@themaw.net>
+
+The function cache_get_offset() returns offsets to be mounted that
+are within the current current subtree for the mount-as-you-go
+functionality used for nested multi-mount map entries.
+
+However, the function was returning offsets from the subree below
+nesting points which prevented the mount at the containing nesting
+point from being mounted. This is because the kernel will see a
+non-empty directory and conclude it isn't a mount point.
+---
+ CHANGELOG   |    1 +
+ lib/cache.c |   27 ++++++++++++++++++++++++---
+ 2 files changed, 25 insertions(+), 3 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -168,6 +168,7 @@
+ - handle duplicates in multi mounts.
+ - fix macro usage in lookup_program.c.
+ - remove unused offset handling code.
++- fix mount as you go offset selection.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/lib/cache.c
++++ autofs-5.0.7/lib/cache.c
+@@ -1183,7 +1183,6 @@ struct mapent *cache_enumerate(struct ma
+  * Get each offset from list head under prefix.
+  * Maintain traversal current position in pos for subsequent calls. 
+  * Return each offset into offset.
+- * TODO: length check on offset.
+  */
+ /* cache must be read locked by caller */
+ char *cache_get_offset(const char *prefix, char *offset, int start,
+@@ -1212,6 +1211,9 @@ char *cache_get_offset(const char *prefi
+ 			continue;
+ 
+ 		if (!strncmp(prefix, offset_start, plen)) {
++			struct mapent *np = NULL;
++			char pe[PATH_MAX + 1];
++
+ 			/* "/" doesn't count for root offset */
+ 			if (plen == 1)
+ 				pstart = &offset_start[plen - 1];
+@@ -1224,7 +1226,24 @@ char *cache_get_offset(const char *prefi
+ 
+ 			/* get next offset */
+ 			pend = pstart;
+-			while (*pend++) ;
++			while (*pend++) {
++				size_t nest_pt_offset;
++
++				if (*pend != '/')
++					continue;
++
++				nest_pt_offset = start + pend - pstart;
++				if (plen > 1)
++					nest_pt_offset += plen;
++				strcpy(pe, this->key);
++				pe[nest_pt_offset] = '\0';
++
++				np = cache_lookup_distinct(this->mc, pe);
++				if (np)
++					break;
++			}
++			if (np)
++				continue;
+ 			len = pend - pstart - 1;
+ 			strncpy(offset, pstart, len);
+ 			offset[len] ='\0';
+@@ -1257,7 +1276,9 @@ char *cache_get_offset(const char *prefi
+ 			break;
+ 
+ 		/* compare offset */
+-		if (pstart[len] != '/' || strncmp(offset, pstart, len))
++		if (pstart[len] != '/' ||
++		    strlen(pstart) != len ||
++		    strncmp(offset, pstart, len))
+ 			break;
+ 
+ 		*pos = next;

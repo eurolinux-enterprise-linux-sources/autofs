@@ -1,0 +1,45 @@
+autofs-5.1.0 - fix leak in parse_mount()
+
+From: Ian Kent <ikent@redhat.com>
+
+Fix a potential memory leak of the allocated mount location
+in modules/parse_sun.c:parse_mount().
+---
+ CHANGELOG           |    1 +
+ modules/parse_sun.c |    8 ++++++--
+ 2 files changed, 7 insertions(+), 2 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -144,6 +144,7 @@
+ - check options length before use in parse_amd.c.
+ - fix some out of order evaluations in parse_amd.c.
+ - fix copy and paste error in dup_defaults_entry().
++- fix leak in parse_mount().
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/parse_sun.c
++++ autofs-5.0.7/modules/parse_sun.c
+@@ -1567,7 +1567,10 @@ int parse_mount(struct autofs_point *ap,
+ 		 */
+ 		if ((strstr(options, "fstype=autofs") &&
+ 		     strstr(options, "hosts"))) {
+-			loc = NULL;
++			if (loc) {
++				free(loc);
++				loc = NULL;
++			}
+ 			loclen = 0;
+ 		} else {
+ 			loclen = strlen(loc);
+@@ -1591,7 +1594,8 @@ int parse_mount(struct autofs_point *ap,
+ 			rv = sun_mount(ap, ap->path, name, name_len,
+ 				       loc, loclen, options, ctxt);
+ 
+-		free(loc);
++		if (loc)
++			free(loc);
+ 		free(options);
+ 		pthread_setcancelstate(cur_state, NULL);
+ 	}

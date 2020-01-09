@@ -1,0 +1,32 @@
+autofs-5.1.0-beta1 - fix map format init in lookup_init()
+
+From: Ian Kent <ikent@redhat.com>
+
+is_format_amd is not initialized in modules/lookup_ldap.c:lookup_init()
+which can cause it to be incorrect leading to a failure to locate a
+base dn.
+---
+ CHANGELOG             |    1 +
+ modules/lookup_ldap.c |    1 +
+ 2 files changed, 2 insertions(+)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -113,6 +113,7 @@
+ - fix out of order amd timestamp lookup.
+ - fix ldap default schema config.
+ - fix ldap default master map name config.
++- fix map format init in lookup_init().
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/lookup_ldap.c
++++ autofs-5.0.7/modules/lookup_ldap.c
+@@ -1647,6 +1647,7 @@ int lookup_init(const char *mapfmt, int
+ 	/* If a map type isn't explicitly given, parse it like sun entries. */
+ 	if (mapfmt == NULL)
+ 		mapfmt = MAPFMT_DEFAULT;
++	is_amd_format = 0;
+ 	if (!strcmp(mapfmt, "amd")) {
+ 		is_amd_format = 1;
+ 		ctxt->format = MAP_FLAG_FORMAT_AMD;

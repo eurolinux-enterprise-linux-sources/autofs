@@ -1,0 +1,34 @@
+autofs-5.1.3 - fix nisplus lookup init not configured check
+
+From: Ian Kent <raven@themaw.net>
+
+If nisplus is not configured nis_local_directory() can return the domain
+name "(none).".
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG                |    1 +
+ modules/lookup_nisplus.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -258,6 +258,7 @@
+ - allow dot in OPTIONSTR value lexer pattern.
+ - revert fix argc off by one in mount_autofs.c.
+ - only take master map mutex for master map update.
++- fix nisplus lookup init not configured check.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/lookup_nisplus.c
++++ autofs-5.0.7/modules/lookup_nisplus.c
+@@ -48,7 +48,7 @@ static int do_init(const char *mapfmt,
+ 	 * We don't need to copy or free it.
+ 	 */
+ 	ctxt->domainname = nis_local_directory();
+-	if (!ctxt->domainname) {
++	if (!ctxt->domainname || !strcmp(ctxt->domainname, "(none).")) {
+ 		logmsg(MODPREFIX "NIS+ domain not set");
+ 		ret = 1;
+ 		goto out;

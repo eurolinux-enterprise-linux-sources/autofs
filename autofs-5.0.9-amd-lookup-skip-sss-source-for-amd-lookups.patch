@@ -1,0 +1,41 @@
+autofs-5.0.9 - amd-lookup skip sss source for amd lookups
+
+From: Ian Kent <raven@themaw.net>
+
+Looks like we won't be able to provide sss as a map source for
+amd maps. There's no way to tell sss to use a different schema
+for different map formats.
+---
+ daemon/lookup.c |   14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+--- autofs-5.0.7.orig/daemon/lookup.c
++++ autofs-5.0.7/daemon/lookup.c
+@@ -636,6 +636,13 @@ int lookup_nss_read_map(struct autofs_po
+ 		list_for_each(p, head) {
+ 			this = list_entry(p, struct nss_source, list);
+ 
++			if (map->flags & MAP_FLAG_FORMAT_AMD &&
++			    !strcmp(this->source, "sss")) {
++				warn(ap->logopt,
++				     "source sss is not available for amd maps.");
++				continue;
++			}
++
+ 			debug(ap->logopt,
+ 			      "reading map %s %s", this->source, map->argv[0]);
+ 
+@@ -1164,6 +1171,13 @@ int lookup_nss_mount(struct autofs_point
+ 		list_for_each(p, head) {
+ 			this = list_entry(p, struct nss_source, list);
+ 
++			if (map->flags & MAP_FLAG_FORMAT_AMD &&
++			    !strcmp(this->source, "sss")) {
++				warn(ap->logopt,
++				     "source sss is not available for amd maps.");
++				continue;
++			}
++
+ 			result = lookup_map_name(this, ap, map, name, name_len);
+ 
+ 			if (result == NSS_STATUS_UNKNOWN)

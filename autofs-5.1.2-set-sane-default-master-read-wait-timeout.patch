@@ -1,0 +1,85 @@
+autofs-5.1.2 - set sane default master read wait timeout
+
+From: Ian Kent <raven@themaw.net>
+
+If an unused map source is configured in nss, with the default
+of waiting indefinitely, autofs will not start.
+
+To restore the previous behaviour of this case set a sensible
+default timeout for the configuration option master_wait.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG                      |    1 +
+ include/defaults.h             |    2 +-
+ man/autofs.conf.5.in           |    4 ++--
+ redhat/autofs.conf.default.in  |    6 +++---
+ samples/autofs.conf.default.in |    6 +++---
+ 5 files changed, 10 insertions(+), 9 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -210,6 +210,7 @@
+ - add master read wait option.
+ - fix included master map not found return.
+ - dont exit on master map read fail timeout.
++- set sane default master read wait timeout.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/include/defaults.h
++++ autofs-5.0.7/include/defaults.h
+@@ -25,7 +25,7 @@
+ #define DEFAULT_MASTER_MAP_NAME	"auto.master"
+ 
+ #define DEFAULT_TIMEOUT			"600"
+-#define DEFAULT_MASTER_WAIT		"-1"
++#define DEFAULT_MASTER_WAIT		"10"
+ #define DEFAULT_NEGATIVE_TIMEOUT	"60"
+ #define DEFAULT_MOUNT_WAIT		"-1"
+ #define DEFAULT_UMOUNT_WAIT		"12"
+--- autofs-5.0.7.orig/man/autofs.conf.5.in
++++ autofs-5.0.7/man/autofs.conf.5.in
+@@ -32,8 +32,8 @@ with earlier autofs releases.
+ .TP
+ .B master_wait
+ sets the default maximum time to wait for the master map to become
+-available if it cannot be read at program start (program default -1,
+-wait forever).
++available if it cannot be read at program start (program default 10,
++wait for 10 seconds then continue).
+ .TP
+ .B negative_timeout
+ .br
+--- autofs-5.0.7.orig/redhat/autofs.conf.default.in
++++ autofs-5.0.7/redhat/autofs.conf.default.in
+@@ -16,10 +16,10 @@ timeout = 300
+ #
+ # master_wait - set the default maximum time to wait for the
+ # 		master map to become available if it cannot
+-# 		be read at program start (default -1, wait
+-# 		forever).
++# 		be read at program start (default 10, wait
++# 		for 10 seconds then continue).
+ #
+-#master_wait = -1
++#master_wait = 10
+ #
+ # negative_timeout - set the default negative timeout for
+ # 		     failed mount attempts (default 60).
+--- autofs-5.0.7.orig/samples/autofs.conf.default.in
++++ autofs-5.0.7/samples/autofs.conf.default.in
+@@ -16,10 +16,10 @@ timeout = 300
+ #
+ # master_wait - set the default maximum time to wait for the
+ # 		master map to become available if it cannot
+-# 		be read at program start (default -1, wait
+-# 		forever).
++# 		be read at program start (default 10, wait
++# 		for 10 seconds then continue).
+ #
+-# master_wait = -1
++# master_wait = 10
+ #
+ # negative_timeout - set the default negative timeout for
+ # 		     failed mount attempts (default 60).

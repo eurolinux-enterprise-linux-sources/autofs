@@ -1,0 +1,45 @@
+autofs-5.1.3 - fix typos in autofs man pages
+
+From: Ian Kent <raven@themaw.net>
+
+Add missing section in the title of the autofs.conf(5) man page
+and fix a duplicated i in file system types description of autofs(5).
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+Reported-by: Roland Hopferwieser <rhopfer@ica.jku.at>
+---
+ CHANGELOG            |    1 +
+ man/autofs.5         |    2 +-
+ man/autofs.conf.5.in |    2 +-
+ 3 files changed, 3 insertions(+), 2 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -253,6 +253,7 @@
+ - fix unset tsd group name handling.
+ - set systemd KillMode to process.
+ - fix mount.nfs blocks on first mount.
++- fix typos in autofs man pages.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/man/autofs.5
++++ autofs-5.0.7/man/autofs.5
+@@ -447,7 +447,7 @@ This is the mount filesystem \fBtype\fP.
+ It can have a value of
+ .BR auto ", " link ", " linkx ", " host ", " lofs ", " ext2-4 ", "
+ .BR xfs ", " nfs ", " nfsl " or " cdfs "."
+-Other types that are not yet implemented or are not available iin autofs are
++Other types that are not yet implemented or are not available in autofs are
+ .BR nfsx ", " lustre ", " jfs ", " program ", " cachefs " and " direct "."
+ .TP
+ .B maptype
+--- autofs-5.0.7.orig/man/autofs.conf.5.in
++++ autofs-5.0.7/man/autofs.conf.5.in
+@@ -1,5 +1,5 @@
+ .\" t
+-.TH AUTOFS.CONF "23 Jan 2014"
++.TH AUTOFS.CONF 5 "23 Jan 2014"
+ .SH NAME
+ autofs.conf \- autofs configuration
+ .SH "DESCRIPTION"

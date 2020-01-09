@@ -1,0 +1,38 @@
+autofs-5.1.0 - fix fix master map type check
+
+From: Ian Kent <ikent@redhat.com>
+
+The map type is of the form <type>[,<format>] but the master map type
+check for the old style map syntax wasn't allowing for <format> to be
+given (see commit 7c104167).
+
+When fixing this an incorrect length was accidently used when checking
+for the "yp" map type which causes it to never match.
+---
+ CHANGELOG       |    1 +
+ daemon/lookup.c |    4 ++--
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -156,6 +156,7 @@
+ - ignore multiple commas in options strings.
+ - clarify multiple mounts description.
+ - update man page autofs(8) for systemd.
++- fix fix master map type check.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/lookup.c
++++ autofs-5.0.7/daemon/lookup.c
+@@ -233,8 +233,8 @@ int lookup_nss_read_master(struct master
+ 			memset(source, 0, 10);
+ 			if ((!strncmp(name, "file", 4) &&
+ 				 (name[4] == ',' || name[4] == ':')) ||
+-			    (!strncmp(name, "yp", 3) &&
+-				 (name[3] == ',' || name[3] == ':')) ||
++			    (!strncmp(name, "yp", 2) &&
++				 (name[2] == ',' || name[2] == ':')) ||
+ 			    (!strncmp(name, "nis", 3) &&
+ 				 (name[3] == ',' || name[3] == ':')) ||
+ 			    (!strncmp(name, "nisplus", 7) &&

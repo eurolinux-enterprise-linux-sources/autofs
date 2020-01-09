@@ -1,0 +1,38 @@
+autofs-5.0.9 - amd lookup try to use external mounts for nfs mounts
+
+From: Ian Kent <raven@themaw.net>
+
+When using nfs type mounts they may be mounted externally to avoid
+multiple instances of the mount.
+
+The current usage doesn't always use external mounts when it can so,
+if option fs is defined, use an external.
+---
+ modules/parse_amd.c |    7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/modules/parse_amd.c b/modules/parse_amd.c
+index 0c708e6..becc519 100644
+--- a/modules/parse_amd.c
++++ b/modules/parse_amd.c
+@@ -1011,7 +1011,7 @@ static int do_nfs_mount(struct autofs_point *ap, const char *name,
+ 	if (proximity == PROXIMITY_OTHER && entry->remopts)
+ 		opts = entry->remopts;
+ 
+-	if (!entry->sublink) {
++	if (!entry->fs) {
+ 		ret = mount_nfs->mount_mount(ap, ap->path, name, strlen(name),
+ 					     target, entry->type, opts,
+ 					     mount_nfs->context);
+@@ -1214,6 +1214,11 @@ static unsigned int validate_nfs_options(unsigned int logopt,
+ 			return 0;
+ 		}
+ 	}
++	if (entry->sublink && !entry->fs) {
++		error(logopt, MODPREFIX
++		      "%s: sublink option requires option fs");
++		return 0;
++	}
+ 	return 1;
+ }
+ 

@@ -1,0 +1,42 @@
+autofs-5.0.9 - amd lookup add remopts handling
+
+From: Ian Kent <raven@themaw.net>
+
+
+---
+ modules/parse_amd.c |   10 ++++++++--
+ 1 file changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/modules/parse_amd.c b/modules/parse_amd.c
+index bf673b3..4cebce8 100644
+--- a/modules/parse_amd.c
++++ b/modules/parse_amd.c
+@@ -988,20 +988,26 @@ static int do_nfs_mount(struct autofs_point *ap, const char *name,
+ 			struct amd_entry *entry, unsigned int flags)
+ {
+ 	char target[PATH_MAX + 1];
++	unsigned int proximity;
++	char *opts = entry->opts;
+ 	int ret = 0;
+ 
+ 	strcpy(target, entry->rhost);
+ 	strcat(target, ":");
+ 	strcat(target, entry->rfs);
+ 
++	proximity = get_network_proximity(entry->rhost);
++	if (proximity == PROXIMITY_OTHER && entry->remopts)
++		opts = entry->remopts;
++
+ 	if (!entry->sublink) {
+ 		ret = mount_nfs->mount_mount(ap, ap->path, name, strlen(name),
+-					     target, entry->type, entry->opts,
++					     target, entry->type, opts,
+ 					     mount_nfs->context);
+ 	} else {
+ 		if (!is_mounted(_PATH_MOUNTED, entry->fs, MNTS_REAL)) {
+ 			ret = mount_nfs->mount_mount(ap, entry->fs, "/", 1,
+-						target, entry->type, entry->opts,
++						target, entry->type, opts,
+ 						mount_nfs->context);
+ 			if (ret)
+ 				goto out;

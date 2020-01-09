@@ -1,0 +1,50 @@
+autofs-5.1.0-beta1 - fix expire when server not responding
+
+From: Ian Kent <ikent@redhat.com>
+
+The change to handle expire of symlinks relies on doing a stat(2)
+call to check if the path to be expired is a symlink.
+
+But system calls that invoke a path walk on real mounts need to be
+avoided during expire because if the server isn't responding they
+will hang.
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |    7 ++++++-
+ 2 files changed, 7 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -117,6 +117,7 @@
+ - fix incorrect max key length in defaults get_hash().
+ - fix xfn sets incorrect lexer state.
+ - fix old style key lookup.
++- fix expire when server not responding.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/automount.c
++++ autofs-5.0.7/daemon/automount.c
+@@ -573,9 +573,13 @@ int umount_multi(struct autofs_point *ap
+ 
+ 	debug(ap->logopt, "path %s incl %d", path, incl);
+ 
++	/* If path is a mount it can't be a symlink */
++	if (is_mounted(_PATH_MOUNTED, path, MNTS_ALL))
++		goto real_mount;
++
+ 	if (lstat(path, &st)) {
+ 		warn(ap->logopt,
+-		     "failed to stat mount point directory %s", path);
++		     "failed to stat directory or symlink %s", path);
+ 		return 1;
+ 	}
+ 
+@@ -617,6 +621,7 @@ int umount_multi(struct autofs_point *ap
+ 		return 0;
+ 	}
+ 
++real_mount:
+ 	is_autofs_fs = 0;
+ 	if (master_find_submount(ap, path))
+ 		is_autofs_fs = 1;

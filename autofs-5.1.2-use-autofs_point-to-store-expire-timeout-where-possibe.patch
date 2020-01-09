@@ -1,0 +1,290 @@
+autofs-5.1.2 - use autofs_point to store expire timeout where possibe
+
+From: Ian Kent <raven@themaw.net>
+
+For technical reasons the expire timeout is stored in the map entry source
+rather than the struct autofs_point and must be stored in the map source for
+direct (and offset) mounts.
+
+But with the map source re-use needed by amd format type "auto" mounts the
+timeout can't be stored in the map source since the it may be different for
+mounts that share the map source.
+
+So use the struct autofs_point where possible.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG              |    1 +
+ daemon/direct.c        |    6 +++---
+ daemon/indirect.c      |    2 +-
+ daemon/state.c         |   12 +++++++-----
+ include/automount.h    |    1 +
+ include/mounts.h       |    2 ++
+ lib/master.c           |    5 ++++-
+ lib/master_parse.y     |   27 +++++++++++++--------------
+ lib/mounts.c           |   27 +++++++++++++++++++++------
+ modules/mount_autofs.c |   12 ++++--------
+ 10 files changed, 57 insertions(+), 38 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -242,6 +242,7 @@
+ - add config option to use mount request log id.
+ - work around sss startup delay.
+ - add sss master map wait config option.
++- use autofs_point to store expire timeout where possibe.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/direct.c
++++ autofs-5.0.7/daemon/direct.c
+@@ -312,7 +312,7 @@ static int unlink_active_mounts(struct a
+ 
+ 	if (tree_get_mnt_list(mnts, &list, me->key, 1)) {
+ 		if (ap->state == ST_READMAP) {
+-			time_t tout = me->source->exp_timeout;
++			time_t tout = get_exp_timeout(ap, me->source);
+ 			int save_ioctlfd, ioctlfd;
+ 
+ 			save_ioctlfd = ioctlfd = me->ioctlfd;
+@@ -518,7 +518,7 @@ int mount_autofs_direct(struct autofs_po
+ 		}
+ 
+ 		mc = map->mc;
+-		timeout = map->exp_timeout;
++		timeout = get_exp_timeout(ap, map);
+ 		cache_readlock(mc);
+ 		pthread_cleanup_push(cache_lock_cleanup, mc);
+ 		me = cache_enumerate(mc, NULL);
+@@ -674,7 +674,7 @@ int mount_autofs_offset(struct autofs_po
+ 	struct ioctl_ops *ops = get_ioctl_ops();
+ 	char buf[MAX_ERR_BUF];
+ 	struct mnt_params *mp;
+-	time_t timeout = me->source->exp_timeout;
++	time_t timeout = get_exp_timeout(ap, me->source);
+ 	struct stat st;
+ 	int ioctlfd, status, ret;
+ 	const char *hosts_map_name = "-hosts";
+--- autofs-5.0.7.orig/daemon/indirect.c
++++ autofs-5.0.7/daemon/indirect.c
+@@ -87,7 +87,7 @@ static int do_mount_autofs_indirect(stru
+ {
+ 	const char *str_indirect = mount_type_str(t_indirect);
+ 	struct ioctl_ops *ops = get_ioctl_ops();
+-	time_t timeout = ap->entry->maps->exp_timeout;
++	time_t timeout = get_exp_timeout(ap, ap->entry->maps);
+ 	char *options = NULL;
+ 	const char *hosts_map_name = "-hosts";
+ 	const char *map_name = hosts_map_name;
+--- autofs-5.0.7.orig/daemon/state.c
++++ autofs-5.0.7/daemon/state.c
+@@ -407,6 +407,7 @@ static void do_readmap_mount(struct auto
+ 		if (valid) {
+ 			struct mapent_cache *vmc = valid->mc;
+ 			struct ioctl_ops *ops = get_ioctl_ops();
++			time_t timeout;
+ 			time_t runfreq;
+ 
+ 			cache_unlock(vmc);
+@@ -428,9 +429,10 @@ static void do_readmap_mount(struct auto
+ 			cache_set_ino_index(vmc, me->key, me->dev, me->ino);
+ 			cache_unlock(vmc);
+ 			/* Set timeout and calculate the expire run frequency */
+-			ops->timeout(ap->logopt, valid->ioctlfd, map->exp_timeout);
+-			if (map->exp_timeout) {
+-				runfreq = (map->exp_timeout + CHECK_RATIO - 1) / CHECK_RATIO;
++			timeout = get_exp_timeout(ap, map);
++			ops->timeout(ap->logopt, valid->ioctlfd, timeout);
++			if (timeout) {
++				runfreq = (timeout + CHECK_RATIO - 1) / CHECK_RATIO;
+ 				if (ap->exp_runfreq)
+ 					ap->exp_runfreq = min(ap->exp_runfreq, runfreq);
+ 				else
+@@ -442,7 +444,7 @@ static void do_readmap_mount(struct auto
+ 			debug(ap->logopt,
+ 			      "%s is mounted", me->key);
+ 	} else
+-		do_mount_autofs_direct(ap, mnts, me, map->exp_timeout);
++		do_mount_autofs_direct(ap, mnts, me, get_exp_timeout(ap, map));
+ 
+ 	return;
+ }
+@@ -491,7 +493,7 @@ static void *do_readmap(void *arg)
+ 
+ 	if (ap->type == LKP_INDIRECT) {
+ 		struct ioctl_ops *ops = get_ioctl_ops();
+-		time_t timeout = ap->entry->maps->exp_timeout;
++		time_t timeout = get_exp_timeout(ap, ap->entry->maps);
+ 		ap->exp_runfreq = (timeout + CHECK_RATIO - 1) / CHECK_RATIO;
+ 		ops->timeout(ap->logopt, ap->ioctlfd, timeout);
+ 		lookup_prune_cache(ap, now);
+--- autofs-5.0.7.orig/include/automount.h
++++ autofs-5.0.7/include/automount.h
+@@ -527,6 +527,7 @@ struct autofs_point {
+ 	dev_t dev;			/* "Device" number assigned by kernel */
+ 	struct master_mapent *entry;	/* Master map entry for this mount */
+ 	unsigned int type;		/* Type of map direct or indirect */
++	time_t exp_timeout;		/* Indirect mount expire timeout */
+ 	time_t exp_runfreq;		/* Frequency for polling for timeouts */
+ 	time_t negative_timeout;	/* timeout in secs for failed mounts */
+ 	unsigned int flags;		/* autofs mount flags */
+--- autofs-5.0.7.orig/include/mounts.h
++++ autofs-5.0.7/include/mounts.h
+@@ -112,6 +112,8 @@ int tree_find_mnt_ents(struct mnt_list *
+ int tree_is_mounted(struct mnt_list *mnts, const char *path, unsigned int type);
+ void set_tsd_user_vars(unsigned int, uid_t, gid_t);
+ const char *mount_type_str(unsigned int);
++void set_exp_timeout(struct autofs_point *ap, struct map_source *source, time_t timeout);
++time_t get_exp_timeout(struct autofs_point *ap, struct map_source *source);
+ void notify_mount_result(struct autofs_point *, const char *, time_t, const char *);
+ int try_remount(struct autofs_point *, struct mapent *, unsigned int);
+ void set_indirect_mount_tree_catatonic(struct autofs_point *);
+--- autofs-5.0.7.orig/lib/master.c
++++ autofs-5.0.7/lib/master.c
+@@ -99,6 +99,7 @@ int master_add_autofs_point(struct maste
+ 		ap->negative_timeout = defaults_get_negative_timeout();
+ 	else
+ 		ap->negative_timeout = global_negative_timeout;
++	ap->exp_timeout = defaults_get_timeout();
+ 	ap->exp_runfreq = 0;
+ 	ap->flags = 0;
+ 	if (ghost)
+@@ -980,6 +981,7 @@ static void master_add_amd_mount_section
+ 	while (paths[i]) {
+ 		const char *path = paths[i];
+ 		unsigned int ghost = 0;
++		time_t timeout;
+ 		char *type = NULL;
+ 		char *map = NULL;
+ 		char *opts;
+@@ -1065,7 +1067,8 @@ static void master_add_amd_mount_section
+ 			goto next;
+ 		}
+ 
+-		source->exp_timeout = conf_amd_get_dismount_interval(path);
++		timeout = conf_amd_get_dismount_interval(path);
++		set_exp_timeout(entry->ap, source, timeout);
+ 		source->master_line = 0;
+ 
+ 		entry->age = age;
+--- autofs-5.0.7.orig/lib/master_parse.y
++++ autofs-5.0.7/lib/master_parse.y
+@@ -823,19 +823,6 @@ int master_parse_entry(const char *buffe
+ 			ghost = 1;
+ 	}
+ 
+-	if (timeout < 0) {
+-		/*
+-		 * If no timeout is given get the timout from the
+-		 * first map (if it exists) or the config for amd
+-		 * maps.
+-		 */
+-		if (format && !strcmp(format, "amd"))
+-			timeout = conf_amd_get_dismount_interval(path);
+-		else if (entry->maps)
+-			timeout = entry->maps->exp_timeout;
+-		else
+-			timeout = default_timeout;
+-	}
+ 
+ 	if (!entry->ap) {
+ 		ret = master_add_autofs_point(entry, logopt, nobind, ghost, 0);
+@@ -856,6 +843,18 @@ int master_parse_entry(const char *buffe
+ 	if (negative_timeout)
+ 		entry->ap->negative_timeout = negative_timeout;
+ 
++	if (timeout < 0) {
++		/*
++		 * If no timeout is given get the timout from the
++		 * autofs point, or the first map, or the config
++		 * for amd maps.
++		 */
++		if (format && !strcmp(format, "amd"))
++			timeout = conf_amd_get_dismount_interval(path);
++		else
++			timeout = get_exp_timeout(entry->ap, entry->maps);
++	}
++
+ 	if (format && !strcmp(format, "amd")) {
+ 		char *opts = conf_amd_get_map_options(path);
+ 		if (opts) {
+@@ -890,7 +889,7 @@ int master_parse_entry(const char *buffe
+ 		local_free_vars();
+ 		return 0;
+ 	}
+-	source->exp_timeout = timeout;
++	set_exp_timeout(entry->ap, source, timeout);
+ 	source->master_line = lineno;
+ 
+ 	entry->age = age;
+--- autofs-5.0.7.orig/lib/mounts.c
++++ autofs-5.0.7/lib/mounts.c
+@@ -1616,6 +1616,24 @@ const char *mount_type_str(const unsigne
+ 	return (pos == type_count ? NULL : str_type[pos]);
+ }
+ 
++void set_exp_timeout(struct autofs_point *ap,
++		     struct map_source *source, time_t timeout)
++{
++	ap->exp_timeout = timeout;
++	if (source)
++		source->exp_timeout = timeout;
++}
++
++time_t get_exp_timeout(struct autofs_point *ap, struct map_source *source)
++{
++	time_t timeout = ap->exp_timeout;
++
++	if (source && ap->type == LKP_DIRECT)
++		timeout = source->exp_timeout;
++
++	return timeout;
++}
++
+ void notify_mount_result(struct autofs_point *ap,
+ 			 const char *path, time_t timeout, const char *type)
+ {
+@@ -1747,12 +1765,9 @@ static int remount_active_mount(struct a
+ 	ops->open(ap->logopt, &fd, devid, path);
+ 	if (fd == -1)
+ 		return REMOUNT_OPEN_FAIL;
+-	else {
+-		if (type == t_indirect || type == t_offset)
+-			timeout = ap->entry->maps->exp_timeout;
+-		else
+-			timeout = me->source->exp_timeout;
+-	}
++
++	error(ap->logopt, "ap->type %d type %u", ap->type, type);
++	timeout = get_exp_timeout(ap, me->source);
+ 
+ 	/* Re-reading the map, set timeout and return */
+ 	if (ap->state == ST_READMAP) {
+--- autofs-5.0.7.orig/modules/mount_autofs.c
++++ autofs-5.0.7/modules/mount_autofs.c
+@@ -57,7 +57,7 @@ int mount_mount(struct autofs_point *ap,
+ 	int nobind = ap->flags & MOUNT_FLAG_NOBIND;
+ 	int ghost = ap->flags & MOUNT_FLAG_GHOST;
+ 	int symlnk = ap->flags & MOUNT_FLAG_SYMLINK;
+-	time_t timeout = ap->entry->maps->exp_timeout;
++	time_t timeout = get_exp_timeout(ap, ap->entry->maps);
+ 	unsigned logopt = ap->logopt;
+ 	struct map_type_info *info;
+ 	struct master *master;
+@@ -272,13 +272,9 @@ int mount_mount(struct autofs_point *ap,
+ 		return 1;
+ 	}
+ 	free_map_type_info(info);
+-	/* The exp_timeout can't be inherited if the map is shared, so
+-	 * the autofs point exp_runfreq must be set here.
+-	 */
+-	if (source->ref <= 1)
+-		source->exp_timeout = timeout;
+-	else
+-		nap->exp_runfreq = (timeout + CHECK_RATIO - 1) / CHECK_RATIO;
++
++	set_exp_timeout(nap, NULL, timeout);
++	nap->exp_runfreq = (timeout + CHECK_RATIO - 1) / CHECK_RATIO;
+ 
+ 	mounts_mutex_lock(ap);
+ 

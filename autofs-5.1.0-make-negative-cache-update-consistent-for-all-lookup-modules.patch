@@ -1,0 +1,100 @@
+autofs-5.1.0 - make negative cache update consistent for all lookup modules
+
+From: Ian Kent <ikent@redhat.com>
+
+Use common function for negative cache update everywhere to ensure consistency.
+---
+ CHANGELOG                |    1 +
+ modules/lookup_hosts.c   |   14 +-------------
+ modules/lookup_nisplus.c |   13 +------------
+ modules/lookup_program.c |   14 +-------------
+ 4 files changed, 4 insertions(+), 38 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -159,6 +159,7 @@
+ - fix fix master map type check.
+ - fix typo in update_hosts_mounts().
+ - fix hosts map update on reload.
++- make negative cache update consistent for all lookup modules.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/lookup_hosts.c
++++ autofs-5.0.7/modules/lookup_hosts.c
+@@ -149,22 +149,10 @@ static int do_parse_mount(struct autofs_
+ 	ret = ctxt->parse->parse_mount(ap, name, name_len,
+ 				 mapent, ctxt->parse->context);
+ 	if (ret) {
+-		time_t now = time(NULL);
+ 		struct mapent_cache *mc = source->mc;
+-		struct mapent *me;
+-		int rv = CHE_OK;
+ 
+ 		cache_writelock(mc);
+-		me = cache_lookup_distinct(mc, name);
+-		if (me)
+-			rv = cache_push_mapent(me, NULL);
+-		else
+-			rv = cache_update(mc, source, name, NULL, now);
+-		if (rv != CHE_FAIL) {
+-			me = cache_lookup_distinct(mc, name);
+-			if (me)
+-				me->status = now + ap->negative_timeout;
+-		}
++		cache_update_negative(mc, source, name, ap->negative_timeout);
+ 		cache_unlock(mc);
+ 		return NSS_STATUS_TRYAGAIN;
+ 	}
+--- autofs-5.0.7.orig/modules/lookup_nisplus.c
++++ autofs-5.0.7/modules/lookup_nisplus.c
+@@ -777,24 +777,13 @@ int lookup_mount(struct autofs_point *ap
+ 	ret = ctxt->parse->parse_mount(ap, key, key_len,
+ 				       mapent, ctxt->parse->context);
+ 	if (ret) {
+-		time_t now = time(NULL);
+-		int rv = CHE_OK;
+-
+ 		free(mapent);
+ 
+ 		/* Don't update negative cache when re-connecting */
+ 		if (ap->flags & MOUNT_FLAG_REMOUNT)
+ 			return NSS_STATUS_TRYAGAIN;
+ 		cache_writelock(mc);
+-		me = cache_lookup_distinct(mc, key);
+-		if (me)
+-			rv = cache_push_mapent(me, NULL);
+-		else
+-			rv = cache_update(mc, source, key, NULL, now);
+-		if (rv != CHE_FAIL) {
+-			me = cache_lookup_distinct(mc, key);
+-			me->status = time(NULL) + ap->negative_timeout;
+-		}
++		cache_update_negative(mc, source, key, ap->negative_timeout);
+ 		cache_unlock(mc);
+ 		return NSS_STATUS_TRYAGAIN;
+ 	}
+--- autofs-5.0.7.orig/modules/lookup_program.c
++++ autofs-5.0.7/modules/lookup_program.c
+@@ -622,20 +622,8 @@ out_free:
+ 		free(mapent);
+ 
+ 	if (ret) {
+-		time_t now = time(NULL);
+-		int rv = CHE_OK;
+-
+ 		cache_writelock(mc);
+-		me = cache_lookup_distinct(mc, name);
+-		if (me)
+-			rv = cache_push_mapent(me, NULL);
+-		else
+-			rv = cache_update(mc, source, name, NULL, now);
+-		if (rv != CHE_FAIL) {
+-			me = cache_lookup_distinct(mc, name);
+-			if (me)
+-				me->status = now + ap->negative_timeout;
+-		}
++		cache_update_negative(mc, source, name, ap->negative_timeout);
+ 		cache_unlock(mc);
+ 		return NSS_STATUS_TRYAGAIN;
+ 	}

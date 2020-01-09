@@ -1,0 +1,37 @@
+autofs-5.0.9 - amd lookup fix autofs_use_lofs value in config
+
+From: Ian Kent <ikent@redhat.com>
+
+The commented out setting in autofs.conf does not reflect its default
+value.
+---
+ redhat/autofs.conf.default.in  |    2 +-
+ samples/autofs.conf.default.in |    2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/redhat/autofs.conf.default.in b/redhat/autofs.conf.default.in
+index 8b04617..1fa951b 100644
+--- a/redhat/autofs.conf.default.in
++++ b/redhat/autofs.conf.default.in
+@@ -325,7 +325,7 @@ dismount_interval = 300
+ # appears to work reasonably well most of the time without the
+ # update).
+ #
+-# autofs_use_lofs = no
++# autofs_use_lofs = yes
+ #
+ # Several configuration options can be set per mount point.
+ # In particulr map_type, map_name, map_defaults, search_path,
+diff --git a/samples/autofs.conf.default.in b/samples/autofs.conf.default.in
+index d0a2002..7a84566 100644
+--- a/samples/autofs.conf.default.in
++++ b/samples/autofs.conf.default.in
+@@ -324,7 +324,7 @@ dismount_interval = 300
+ # appears to work reasonably well most of the time without the
+ # update).
+ #
+-# autofs_use_lofs = no
++# autofs_use_lofs = yes
+ #
+ # Several configuration options can be set per mount point.
+ # In particulr map_type, map_name, map_defaults, search_path,

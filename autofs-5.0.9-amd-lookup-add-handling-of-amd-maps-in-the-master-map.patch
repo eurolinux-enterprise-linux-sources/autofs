@@ -1,0 +1,361 @@
+autofs-5.0.9 - amd lookup add handling of amd maps in the master map
+
+From: Ian Kent <raven@themaw.net>
+
+
+---
+ daemon/automount.c     |   79 +++++++++++++++++++++++++++++++++++++++++++++++-
+ include/automount.h    |    1 +
+ include/master.h       |    2 +
+ lib/master.c           |   44 +++++++++++++++++++++++++++
+ lib/master_parse.y     |   23 ++++++++++++--
+ lib/master_tok.l       |    2 +
+ lib/parse_subs.c       |    1 +
+ modules/mount_autofs.c |   24 +++++++++++++++
+ modules/parse_amd.c    |   12 +++++++
+ 9 files changed, 182 insertions(+), 6 deletions(-)
+
+diff --git a/daemon/automount.c b/daemon/automount.c
+index fd5a19b..0ba3580 100644
+--- a/daemon/automount.c
++++ b/daemon/automount.c
+@@ -512,6 +512,9 @@ static int umount_subtree_mounts(struct autofs_point *ap, const char *path, unsi
+ 			left++;
+ 		}
+ 		cache_multi_unlock(me->parent);
++		if (ap->entry->maps &&
++		    (ap->entry->maps->flags & MAP_FLAG_FORMAT_AMD))
++			cache_pop_mapent(me);
+ 		pthread_setcancelstate(cur_state, NULL);
+ 	}
+ 
+@@ -525,13 +528,36 @@ static int umount_subtree_mounts(struct autofs_point *ap, const char *path, unsi
+ 	 * it already to ensure it's ok to remove any offset triggers.
+ 	 */
+ 	if (!is_mm_root && is_mounted(_PATH_MOUNTED, path, MNTS_REAL)) {
++		struct amd_entry *entry;
+ 		debug(ap->logopt, "unmounting dir = %s", path);
+ 		if (umount_ent(ap, path)) {
+ 			warn(ap->logopt, "could not umount dir %s", path);
+ 			left++;
++			goto done;
+ 		}
+-	}
+ 
++		/* Check for an external mount and umount if possible */
++		mounts_mutex_lock(ap);
++		entry = __master_find_amdmount(ap, path);
++		if (!entry) {
++			mounts_mutex_unlock(ap);
++			goto done;
++		}
++		list_del(&entry->entries);
++		mounts_mutex_unlock(ap);
++		if (ext_mount_remove(&entry->ext_mount, entry->fs)) {
++			if (umount_ent(ap, entry->fs))
++				debug(ap->logopt,
++				      "failed to umount external mount %s",
++				      entry->fs);
++			else
++				debug(ap->logopt,
++				      "umounted external mount %s",
++				      entry->fs);
++		}
++		free_amd_entry(entry);
++	}
++done:
+ 	return left;
+ }
+ 
+@@ -540,10 +566,55 @@ static int umount_subtree_mounts(struct autofs_point *ap, const char *path, unsi
+ int umount_multi(struct autofs_point *ap, const char *path, int incl)
+ {
+ 	int is_autofs_fs;
++	struct stat st;
+ 	int left;
+ 
+ 	debug(ap->logopt, "path %s incl %d", path, incl);
+ 
++	if (lstat(path, &st)) {
++		warn(ap->logopt,
++		     "failed to stat mount point directory %s", path);
++		return 1;
++	}
++
++	/* if this is a symlink we can handle it now */
++	if (S_ISLNK(st.st_mode)) {
++		struct amd_entry *entry;
++		if (st.st_dev != ap->dev) {
++			crit(ap->logopt,
++			     "symlink %s has the wrong device, "
++			     "possible race condition", path);
++			return 1;
++		}
++		debug(ap->logopt, "removing symlink %s", path);
++		if (unlink(path)) {
++			error(ap->logopt,
++			      "failed to remove symlink %s", path);
++			return 1;
++		}
++		/* Check for an external mount and attempt umount if needed */
++		mounts_mutex_lock(ap);
++		entry = __master_find_amdmount(ap, path);
++		if (!entry) {
++			mounts_mutex_unlock(ap);
++			return 0;
++		}
++		list_del(&entry->entries);
++		mounts_mutex_unlock(ap);
++		if (ext_mount_remove(&entry->ext_mount, entry->fs)) {
++			if (umount_ent(ap, entry->fs))
++				debug(ap->logopt,
++				      "failed to umount external mount %s",
++				      entry->fs);
++			else
++				debug(ap->logopt,
++				      "umounted external mount %s",
++				      entry->fs);
++		}
++		free_amd_entry(entry);
++		return 0;
++	}
++
+ 	is_autofs_fs = 0;
+ 	if (master_find_submount(ap, path))
+ 		is_autofs_fs = 1;
+@@ -1475,9 +1546,15 @@ static void handle_mounts_cleanup(void *arg)
+ 		clean = 1;
+ 
+ 	if (submount) {
++		struct amd_entry *am;
+ 		/* We are finishing up */
+ 		ap->parent->submnt_count--;
+ 		list_del_init(&ap->mounts);
++		am = __master_find_amdmount(ap->parent, ap->path);
++		if (am) {
++			list_del_init(&am->entries);
++			free_amd_entry(am);
++		}
+ 	}
+ 
+ 	/* Don't signal the handler if we have already done so */
+diff --git a/include/automount.h b/include/automount.h
+index 615efcc..37133fe 100644
+--- a/include/automount.h
++++ b/include/automount.h
+@@ -510,6 +510,7 @@ struct autofs_point {
+ 	struct autofs_point *parent;	/* Owner of mounts list for submount */
+ 	pthread_mutex_t mounts_mutex;	/* Protect mount lists */
+ 	struct list_head mounts;	/* List of autofs mounts at current level */
++	struct list_head amdmounts;	/* List of non submount amd mounts */
+ 	unsigned int submount;		/* Is this a submount */
+ 	unsigned int shutdown;		/* Shutdown notification */
+ 	unsigned int submnt_count;	/* Number of submounts */
+diff --git a/include/master.h b/include/master.h
+index 8833ddf..bcc8eeb 100644
+--- a/include/master.h
++++ b/include/master.h
+@@ -104,6 +104,8 @@ void master_source_current_signal(struct master_mapent *);
+ struct master_mapent *master_find_mapent(struct master *, const char *);
+ struct autofs_point *__master_find_submount(struct autofs_point *, const char *);
+ struct autofs_point *master_find_submount(struct autofs_point *, const char *);
++struct amd_entry *__master_find_amdmount(struct autofs_point *, const char *);
++struct amd_entry *master_find_amdmount(struct autofs_point *, const char *);
+ struct master_mapent *master_new_mapent(struct master *, const char *, time_t);
+ void master_add_mapent(struct master *, struct master_mapent *);
+ void master_remove_mapent(struct master_mapent *);
+diff --git a/lib/master.c b/lib/master.c
+index df4aef6..5e4ab51 100644
+--- a/lib/master.c
++++ b/lib/master.c
+@@ -120,6 +120,7 @@ int master_add_autofs_point(struct master_mapent *entry, unsigned logopt,
+ 	ap->submount = submount;
+ 	INIT_LIST_HEAD(&ap->mounts);
+ 	INIT_LIST_HEAD(&ap->submounts);
++	INIT_LIST_HEAD(&ap->amdmounts);
+ 	ap->shutdown = 0;
+ 
+ 	status = pthread_mutex_init(&ap->mounts_mutex, NULL);
+@@ -136,11 +137,26 @@ int master_add_autofs_point(struct master_mapent *entry, unsigned logopt,
+ 
+ void master_free_autofs_point(struct autofs_point *ap)
+ {
++	struct list_head *p, *head;
+ 	int status;
+ 
+ 	if (!ap)
+ 		return;
+ 
++	mounts_mutex_lock(ap);
++	head = &ap->amdmounts;
++	p = head->next;
++	while (p != head) {
++		struct amd_entry *entry = list_entry(p, struct amd_entry, entries);
++		p = p->next;
++		if (!list_empty(&entry->ext_mount))
++			ext_mount_remove(&entry->ext_mount, entry->fs);
++		if (!list_empty(&entry->entries))
++			list_del(&entry->entries);
++		free(entry);
++	}
++	mounts_mutex_unlock(ap);
++
+ 	status = pthread_mutex_destroy(&ap->mounts_mutex);
+ 	if (status)
+ 		fatal(status);
+@@ -694,6 +710,34 @@ struct autofs_point *master_find_submount(struct autofs_point *ap, const char *p
+ 	return submount;
+ }
+ 
++struct amd_entry *__master_find_amdmount(struct autofs_point *ap, const char *path)
++{
++	struct list_head *head, *p;
++
++	head = &ap->amdmounts;
++	list_for_each(p, head) {
++		struct amd_entry *entry;
++
++		entry = list_entry(p, struct amd_entry, entries);
++
++		if (!strcmp(entry->path, path))
++			return entry;
++	}
++
++	return NULL;
++}
++
++struct amd_entry *master_find_amdmount(struct autofs_point *ap, const char *path)
++{
++	struct amd_entry *entry;
++
++	mounts_mutex_lock(ap);
++	entry = __master_find_amdmount(ap, path);
++	mounts_mutex_unlock(ap);
++
++	return entry;
++}
++
+ struct master_mapent *master_new_mapent(struct master *master, const char *path, time_t age)
+ {
+ 	struct master_mapent *entry;
+diff --git a/lib/master_parse.y b/lib/master_parse.y
+index 11caf5b..03aedf7 100644
+--- a/lib/master_parse.y
++++ b/lib/master_parse.y
+@@ -790,12 +790,29 @@ int master_parse_entry(const char *buffer, unsigned int default_timeout, unsigne
+ 		}
+ 	}
+ 
++	if (!format) {
++		if (conf_amd_mount_section_exists(path))
++			format = strdup("amd");
++	}
++
++	if (format && !strcmp(format, "amd")) {
++		unsigned int loglevel = conf_amd_get_log_options();
++		if (loglevel <= LOG_DEBUG && loglevel > LOG_INFO)
++			logopt = LOGOPT_DEBUG;
++		else if (loglevel <= LOG_INFO && loglevel > LOG_ERR)
++			logopt = LOGOPT_VERBOSE;
++	}
++
++
+ 	if (timeout < 0) {
+ 		/*
+-		 * If no timeout is given get the timout from first
+-		 * map (if it exists).
++		 * If no timeout is given get the timout from the
++		 * first map (if it exists) or the config for amd
++		 * maps.
+ 		 */
+-		if (entry->maps)
++		if (format && !strcmp(format, "amd"))
++			timeout = conf_amd_get_dismount_interval(path);
++		else if (entry->maps)
+ 			timeout = entry->maps->exp_timeout;
+ 		else
+ 			timeout = default_timeout;
+diff --git a/lib/master_tok.l b/lib/master_tok.l
+index a55cc76..d43c1dd 100644
+--- a/lib/master_tok.l
++++ b/lib/master_tok.l
+@@ -119,7 +119,7 @@ DNNAMESTR2	([[:alnum:]_.\-]+)
+ INTMAP		(-hosts|-null)
+ MULTI		((multi)(,(sun|hesiod))?(:{OPTWS}|{WS}))
+ MULTISEP	([\-]{2}[[:blank:]]+)
+-MTYPE		((file|program|sss|yp|nis|nisplus|ldap|ldaps|hesiod|userdir)(,(sun|hesiod))?(:{OPTWS}|{WS}))
++MTYPE		((file|program|sss|yp|nis|nisplus|ldap|ldaps|hesiod|userdir)(,(sun|hesiod|amd))?(:{OPTWS}|{WS}))
+ 
+ 
+ OPTTOUT		(-t{OPTWS}|-t{OPTWS}={OPTWS}|--timeout{OPTWS}|--timeout{OPTWS}={OPTWS})
+diff --git a/lib/parse_subs.c b/lib/parse_subs.c
+index de5319f..421d18c 100644
+--- a/lib/parse_subs.c
++++ b/lib/parse_subs.c
+@@ -109,6 +109,7 @@ static unsigned int map_type_count = sizeof(map_type)/sizeof(struct types);
+ static struct types format_type[] = {
+ 	{ "sun", 3 },
+ 	{ "hesiod", 6 },
++	{ "amd", 3},
+ };
+ static unsigned int format_type_count = sizeof(format_type)/sizeof(struct types);
+ 
+diff --git a/modules/mount_autofs.c b/modules/mount_autofs.c
+index 61aec70..ab5a8e3 100644
+--- a/modules/mount_autofs.c
++++ b/modules/mount_autofs.c
+@@ -203,6 +203,30 @@ int mount_mount(struct autofs_point *ap, const char *root, const char *name,
+ 	}
+ 	if (info->map)
+ 		argv[0] = info->map;
++	/*
++	 * If the parent map format is amd and the format isn't
++	 * specified in the map entry set it from the parent map
++	 * source.
++	 */
++	if (!info->format && ap->entry->maps) {
++		struct map_source *s = ap->entry->maps;
++		/*
++		 * For amd maps, if the format and source type aren't
++		 * specified try and set them from the parent.
++		 */
++		if (s->flags & MAP_FLAG_FORMAT_AMD) {
++			info->format = strdup("amd");
++			if (!info->format)
++				warn(ap->logopt, MODPREFIX
++				     "failed to set amd map format");
++			if (!info->type && s->type) {
++				info->type = strdup(s->type);
++				if (!info->type)
++					warn(ap->logopt, MODPREFIX
++					     "failed to set amd map type");
++			}
++		}
++	}
+ 
+ 	if (options) {
+ 		p = options;
+diff --git a/modules/parse_amd.c b/modules/parse_amd.c
+index 5d8617e..4322479 100644
+--- a/modules/parse_amd.c
++++ b/modules/parse_amd.c
+@@ -1563,8 +1563,18 @@ int parse_mount(struct autofs_point *ap, const char *name,
+ 		dequote_entry(ap, this);
+ 
+ 		rv = amd_mount(ap, name, this, source, sv, flags, ctxt);
+-		if (!rv)
++		mounts_mutex_lock(ap);
++		if (!rv) {
++			/* Add to the parent list of mounts */
++			list_add_tail(&this->entries, &ap->amdmounts);
++			/* Mounted, leave it on the parent list */
++			list_del_init(&this->list);
++			mounts_mutex_unlock(ap);
+ 			break;
++		}
++		/* Not mounted, remove it from the parent list */
++		list_del_init(&this->entries);
++		mounts_mutex_unlock(ap);
+ 	}
+ 	free_amd_entry(cur_defaults);
+ 

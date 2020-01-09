@@ -1,0 +1,43 @@
+autofs-5.0.8 - fix fix ipv6 libtirpc getport
+
+From: Ian Kent <raven@themaw.net>
+
+Remove a duplicated case entry and remove redundant check, since it
+can never be reached, in rpc_rpcb_getport().
+---
+ CHANGELOG      |    1 +
+ lib/rpc_subs.c |    6 +-----
+ 2 files changed, 2 insertions(+), 5 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -66,6 +66,7 @@
+ - only probe specific nfs version if requested.
+ - fix ipv6 libtirpc getport.
+ - improve timeout option description.
++- fix fix ipv6 libtirpc getport.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/lib/rpc_subs.c
++++ autofs-5.0.7/lib/rpc_subs.c
+@@ -524,7 +524,6 @@ static enum clnt_stat rpc_rpcb_getport(C
+ 			if (rpcerr.re_vers.low > RPCBVERS4)
+ 				return status;
+ 			continue;
+-		case RPC_PROCUNAVAIL:
+ 		case RPC_PROGUNAVAIL:
+ 			continue;
+ 		default:
+@@ -533,10 +532,7 @@ static enum clnt_stat rpc_rpcb_getport(C
+ 		}
+ 	}
+ 
+-        if (s_port == 0)
+-		return RPC_PROGNOTREGISTERED;
+-
+-        return RPC_PROCUNAVAIL;
++	return RPC_PROGNOTREGISTERED;
+ }
+ 
+ static enum clnt_stat rpc_getport(struct conn_info *info,

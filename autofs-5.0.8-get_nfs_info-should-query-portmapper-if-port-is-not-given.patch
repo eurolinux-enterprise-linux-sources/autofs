@@ -1,0 +1,40 @@
+autofs-5.0.8 - get_nfs_info() should query portmapper if port is not given
+
+From: Scott Mayhew <smayhew@redhat.com>
+
+It shouldn't just assume it can use port 2049.
+
+Signed-off-by: Scott Mayhew <smayhew@redhat.com>
+---
+ CHANGELOG            |    1 +
+ modules/replicated.c |    9 ++++++---
+ 2 files changed, 7 insertions(+), 3 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -67,6 +67,7 @@
+ - fix ipv6 libtirpc getport.
+ - improve timeout option description.
+ - fix fix ipv6 libtirpc getport.
++- get_nfs_info() should query portmapper if port is not given.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/replicated.c
++++ autofs-5.0.7/modules/replicated.c
+@@ -444,9 +444,12 @@ static unsigned int get_nfs_info(unsigne
+ 		      host->name, proto, version);
+ 
+ 	rpc_info->proto = proto;
+-	if (port < 0)
+-		rpc_info->port = NFS_PORT;
+-	else if (port > 0)
++	if (port < 0) {
++		if (version & NFS4_REQUESTED)
++			rpc_info->port = NFS_PORT;
++		else
++			port = 0;
++	} else if (port > 0)
+ 		rpc_info->port = port;
+ 
+ 	memset(&parms, 0, sizeof(struct pmap));

@@ -1,0 +1,31 @@
+autofs-5.1.0 - init qdn before use in get_query_dn()
+
+From: Ian Kent <ikent@redhat.com>
+
+Ensure qdn is initialized before use in case there's garbage in it.
+---
+ CHANGELOG             |    1 +
+ modules/lookup_ldap.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -169,6 +169,7 @@
+ - fix macro usage in lookup_program.c.
+ - remove unused offset handling code.
+ - fix mount as you go offset selection.
++- init qdn before use in get_query_dn().
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/lookup_ldap.c
++++ autofs-5.0.7/modules/lookup_ldap.c
+@@ -335,7 +335,7 @@ LDAP *init_ldap_connection(unsigned logo
+ static int get_query_dn(unsigned logopt, LDAP *ldap, struct lookup_context *ctxt, const char *class, const char *key)
+ {
+ 	char buf[MAX_ERR_BUF];
+-	char *query, *dn, *qdn;
++	char *query, *dn, *qdn = NULL;
+ 	LDAPMessage *result = NULL, *e;
+ 	char *attrs[2];
+ 	struct berval **value;

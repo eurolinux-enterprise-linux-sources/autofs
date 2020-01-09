@@ -1,0 +1,1085 @@
+autofs-5.0.9 - amd lookup update man pages
+
+From: Ian Kent <raven@themaw.net>
+
+Update man pages to reflect the addition of the amd map format
+parser, move configuration to it's own man page and update with
+amd options descriptions.
+---
+ man/auto.master.5.in           |  183 ++----------------
+ man/autofs.5                   |  346 +++++++++++++++++++++++++++++++++-
+ man/autofs.8.in                |    1 
+ man/autofs.conf.5.in           |  412 ++++++++++++++++++++++++++++++++++++++++
+ man/autofs_ldap_auth.conf.5.in |    1 
+ man/automount.8                |    1 
+ 6 files changed, 782 insertions(+), 162 deletions(-)
+ create mode 100644 man/autofs.conf.5.in
+
+diff --git a/man/auto.master.5.in b/man/auto.master.5.in
+index 59df04f..2267550 100644
+--- a/man/auto.master.5.in
++++ b/man/auto.master.5.in
+@@ -122,14 +122,18 @@ will be ignored if its name is not ended with the suffix. In addition a dot file
+ which name is started with "." is also ignored.
+ .RE
+ .TP
+-\fBformat\fP
+-Format of the map data; currently the only formats
+-recognized are \fBsun\fP, which is a subset of the Sun automounter map
+-format, and \fBhesiod\fP, for hesiod filesys entries.  If the format is
+-left unspecified, it defaults to \fBsun\fP for all map types except
+-\fBhesiod\fP.
+-.TP
+-\fBmap\fP
++.B format
++.br
++Format of the map data; currently the formats recognized are \fBsun\fP,
++which is a subset of the Sun automounter map format, \fBhesiod\fP, for
++hesiod filesys entries and \fBamd\fP for amd formated map entries.
++If the format is left unspecified, it defaults to \fBsun\fP for all map
++types except \fBhesiod\fP unless it is a top level \fBamd\fP mount that
++has a configuration entry for the mount point path, in which case the
++format used is \fBamd\fP.
++.TP
++.B map
++.br
+ Name of the map to use.  This is an absolute UNIX pathname
+ for maps of types \fBfile\fP, \fBdir\fP, or \fBprogram\fP, and the name of a database
+ in the case for maps of type \fByp\fP, \fBnisplus\fP, or \fBhesiod\fP or
+@@ -205,87 +209,6 @@ or in the configuration.
+ Set the timeout for caching failed key lookups. This option can be
+ used to override the global default given either on the command line
+ or in the configuration.
+-.SH AUTOFS CONFIGURATION
+-.P
+-There are two files that amy contain configuration settings
+-.nh
+-.BR @@autofsmapdir@@/autofs.conf .
+-.hy
+-and
+-.BR @@autofsconfdir@@/autofs .
+-.hy
+-The former contains the bulk of configuration options while the later
+-contains entries to be set in the environment for use by the init
+-sub-system.
+-.TP
+-The only entry currently present in the init system configuration
+-is OPTIONS which may be used to specify options to be used when
+-starting
+-.BR automount (8) .
+-.TP
+-Previously all configuration entries were located in the init system
+-configuration file and their values were set in the environment for
+-later use by autofs. Configuration entries that were set in the
+-environment continue to be set in the environment at program startup
+-and any setting already present in the environment takes precedence.
+-.SH SYSTEM DEFAULTS CONFIGURATION
+-.P
+-The value of most settings may be set in the configuration file
+-.nh
+-.BR @@autofsmapdir@@/autofs.conf .
+-.hy
+-Configuration entries are "name = value" pairs and the name is case
+-insensitive. Older configuration names had a DEFAULTS_ prefix which
+-is appended to the configuration name when a value isn't found and
+-the search repeated.
+-.TP
+-An optional section name
+-.nh
+-.BR [ autofs ]
+-.hy
+-may also be given.
+-.TP
+-The available configuration entries are:
+-.TP
+-.B timeout
+-Sets the default mount timeout in seconds. The internal program
+-default is 10 minutes, but the default installed configuration
+-overrides this and sets the timeout to 5 minutes to be consistent
+-with earlier autofs releases.
+-.TP
+-.B negative_timeout
+-Set the default timeout for caching failed key lookups (program default
+-60). If the equivalent command line option is given it will override this
+-setting.
+-.TP
+-.B mount_wait
+-Set the default time to wait for a response from a spawned mount(8)
+-before sending it a SIGTERM. Note that we still need to wait for the
+-RPC layer to timeout before the sub-process exits so this isn't ideal
+-but it is the best we can do. The default is to wait until mount(8)
+-returns without intervention.
+-.TP
+-.B umount_wait
+-Set the default time to wait for a response from a spawned umount(8)
+-before sending it a SIGTERM. Note that we still need to wait for the
+-RPC layer to timeout before the sub-process exits so this isn't ideal
+-but it is the best we can do.
+-.TP
+-.B browse_mode
+-Maps are browsable by default (program default "yes").
+-.TP
+-.B mount_nfs_default_protocol
+-Specify the default protocol used by mount.nfs(8) (program default 3). Since
+-we can't identify this default automatically we need to set it in the autofs
+-configuration.
+-.TP
+-.B append_options
+-Determine whether global options, given on the command line or per mount
+-in the master map, are appended to map entry options or if the map entry
+-options replace the global options (program default "yes", append options).
+-.TP
+-.B logging
+-set default log level "none", "verbose" or "debug" (program default "none").
+ .SH BUILTIN MAP -hosts
+ If "-hosts" is given as the map then accessing a key under the mount point
+ which corresponds to a hostname will allow access to the exports of that
+@@ -341,76 +264,21 @@ The object classes and attributes used for accessing automount maps in
+ LDAP can be changed by setting entries in the autofs configuration
+ located in
+ .nh
+-.BR @@autofsmapdir@@/autofs.conf .
++.BR @@autofsconfdir@@/autofs.conf .
+ .hy
+ .TP
+ .B NOTE:
+ If a schema is given in the configuration then all the schema configuration
+ values must be set, any partial schema specification will be ignored.
+-.P
+-The configuration settings available are:
+-.TP
+-.B ldap_timeout
+-Set the network response timeout (default 8).
+-Set timeout value for the synchronous API  calls. The default is the LDAP
+-library default of an infinite timeout.
+ .TP
+-.B ldap_network_timeout
+-Set the network response timeout (default 8).
+-.TP
+-.B ldap_uri
+-A space seperated list of server uris of the form <proto>://<server>[/]
+-where <proto> can be ldap or ldaps. The option can be given multiple times.
+-Map entries that include a server name override this option and it is then
+-not used. Default is an empty list in which case either the server given
+-in a map entry or the LDAP configured default is used. This uri list is read at
+-startup and whenever the daemon receives a HUP signal.
+-.P
+-This configuration option can also be used to request autofs lookup SRV RRs
+-for a domain of the form <proto>:///[<domain dn>]. Note that a trailing
+-"/" is not allowed when using this form. If the domain dn is not specified
+-the dns domain name (if any) is used to construct the domain dn for the
+-SRV RR lookup. The server list returned from an SRV RR lookup is refreshed
+-according to the minimum ttl found in the SRV RR records or after one hour,
+-whichever is less.
++For \fBamd\fP format maps a different schema is used:
+ .TP
+-.B search_base
+-The base dn to use when searching for amap base dn. This entry may be
+-given multiple times and each will be checked for a map base dn in
+-the order they occur in the configuration. The search base list is read
+-at startup and whenever the daemon recieves a HUP signal.
+-.TP
+-.B map_object_class
+-The map object class. In the \fBnisMap\fP schema this corresponds to the class
+-\fBnisMap\fP and in the \fBautomountMap\fP schema it corresponds to the class
+-\fBautomountMap\fP.
+-.TP
+-.B entry_object_class
+-The map entry object class. In the \fBnisMap\fP schema this corresponds
+-to the class \fBnisObject\fP and in the \fBautomountMap\fP schema it
+-corresponds to the class \fBautomount\fP.
+-.TP
+-.B map_attribute
+-The attribute used to identify the name of the map to which this
+-entry belongs.  In the \fBnisMap\fP schema this corresponds to the attribute
+-\fBnisMapName\fP and in the \fBautomountMap\fP schema it corresponds to the
+-attribute \fBou\fP or \fBautomountMapName\fP.
+-.TP
+-.B entry_attribute
+-The attribute used to identify a map key. In the \fBnisMap\fP schema this
+-corresponds to the attribute \fBcn\fP and in the \fBautomountMap\fP schema
+-it corresponds to the attribute \fBautomountKey\fP.
+-.TP
+-.B value_attribute
+-The attribute used to identify the value of the map entry. In the \fBnisMap\fP
+-schema this corresponds to the attribute \fBnisMapEntry\fP and in the \fBautomountMap\fP
+-schema it corresponds to the attribute \fBautomountInformation\fP.
+-.TP
+-.B NOTE:
+-It is essential that entries use class and attribute in a consistent
+-manner for correct operation of autofs. For example mixing \fBcn\fP and
+-\fBautomountKey\fP attributes in \fBautomount\fP schema map entries won't
+-work as expected.
++.I amdMap
++.br
++The \fBamdmap\fP schema contains attributes \fBamdmapName\fP, \fBamdmapKey\fP
++and \fBamdmapValue\fP where \fBamdmapName\fP contains the name of the containing
++map, \fBamdmapKey\fP contains the map key and \fBamdmapValue\fP contains the
++map entry.
+ .SH LDAP AUTHENTICATION, ENCRYPTED AND CERTIFIED CONNECTIONS
+ LDAP authenticated binds, TLS encrypted connections and certification
+ may be used by setting appropriate values in the autofs authentication
+@@ -419,10 +287,6 @@ settings.  The default location of this file is
+ .nh
+ .BR @@autofsmapdir@@/autofs_ldap_auth.conf .
+ .hy
+-.TP
+-.B auth_conf_file
+-This configuration option may be used to specify an alternate location
+-for the ldap authentication file
+ .P
+ If this file exists it will be used to establish whether TLS or authentication
+ should be used.
+@@ -458,7 +322,9 @@ in the per-user configuration. The location of these files and the configuration
+ entry requirements is system dependent so the documentation for your
+ installation will need to be consulted to get further information.
+ .P
+-See \fBautofs_ldap_auth.conf\fP(5) for more information.
++See
++.B autofs_ldap_auth.conf (5)
++for more information.
+ .SH EXAMPLE
+ .sp
+ .RS +.2i
+@@ -492,7 +358,8 @@ configuration will be used to locate the source of the map
+ .SH "SEE ALSO"
+ .BR automount (8),
+ .BR autofs (5),
+-.BR autofs (8).
++.BR autofs (8),
++.BR autofs.conf (5),
+ .BR autofs_ldap_auth.conf (5)
+ .SH AUTHOR
+ This manual page was written by Christoph Lameter <chris@waterf.org>,
+diff --git a/man/autofs.5 b/man/autofs.5
+index c3a1611..81ae375 100644
+--- a/man/autofs.5
++++ b/man/autofs.5
+@@ -1,6 +1,5 @@
+ .\" t
+-.TH AUTOFS 5 "6 Apr 1998"
+-.TH AUTOFS 5 "14 Jan 2000"
++.TH AUTOFS 5 "9 Feb 2014"
+ .SH NAME
+ autofs \- Format of the automounter maps
+ .SH "DESCRIPTION"
+@@ -10,14 +9,16 @@ the master map of the automounter (see
+ These maps describe how file systems below the mount point of the map
+ (given in the master map) are to be mounted.  This page describes the
+ .B sun
+-map format; if another map format is specified (e.g. \fBhesiod\fP),
++map format; if another map format, other than
++.B amd ,
++is specified (e.g. \fBhesiod\fP),
+ this documentation does not apply.
+ 
+ Indirect maps, except for the internal hosts map, can be changed on the fly
+ and the automouter will recognize those changes on the next operation it
+ performs on that map. Direct maps require a HUP signal be sent to the
+ daemon to refresh their contents as does the master map.
+-.SH "FORMAT"
++.SH "SUN FORMAT"
+ This is a description of the text file format.  Other methods of specifying
+ these files may exist.  All empty lines or lines beginning with # are
+ ignored. The basic format of one line in such maps is:
+@@ -245,10 +246,347 @@ Anything else is questionable and unsupported, but these variations will also wo
+ .SH UNSUPPORTED
+ This version of the automounter supports direct maps stored in FILE, NIS, NISPLUS
+ and LDAP only.
++.P
++.SH "AMD FORMAT"
++This is a description of the text file format. Other methods of specifying
++mount map entries may be required for different map sources.  All empty
++lines or lines beginning with # are ignored. The basic format of one
++line in such maps is:
++.P
++.BR key\ location-list
++.TP
++.B key
++.br
++A \fBkey\fP is a path (or a single path component alone) that may end
++in the wildcard key, "*", or the wildcard key alone and must not begin
++with the "/" character.
++.TP
++.B location-list
++Following the \fBkey\fP is a mount \fBlocation-list\fP.
++.TP
++A \fBlocation-list\fP list has the following syntax:
++.TP
++.B location[\ location[\ ...\ ]]\ [||\ location[\ location[\ ...\ ]]
++.P
++A mount \fBlocation-list\fP can use the cut operator, \fB||\fP, to specify
++locations that should be tried if none of the locations to the left of it
++where selected for a mount attempt.
++
++A mount \fBlocation\fP consists of an optional colon seperated list
++of \fBselectors\fP, followed by a colon seperated list of \fBoption:=value\fP
++pairs.
++
++The \fBselectors\fP that may be used return a value or boolean result.
++Those that return a value may be to used with the comparison
++operators \fB==\fP and \fB!=\fP and those that return a boolean result
++may be negated with the \fB!\fP.
++
++For a \fBlocation\fP to be selected for a mount attempt all of its \fBselectors\fP
++must evaluate to true. If a \fBlocation\fP is selected for a mount attempt
++and succeeds the lookup is completed and returns success. If the mount
++attempt fails the proceedure continues with the next \fBlocation\fP until
++they have all been tried.
++
++In addition some \fBselectors\fP take no argumenets, some one argument
++and others optionally take two arguments.
++
++The \fBselectors\fP that take no arguments are:
++.RS
++.TP
++.B arch
++.br
++The machine architecture which, if not set in the confugration, is
++obtained using uname(2).
++.TP
++.B karch
++.br
++The machine kernel architecture which, if not set in the confugration,
++is obtained using uname(2).
++.TP
++.B os
++.br
++The operating system name, if not set in the confugration, is obtained
++using uname(2).
++.TP
++.B osver
++.br
++The operating system version, if not set in the confugration, is obtained
++using uname(2).
++.TP
++.B full_os
++.br
++The full operating system name, if not set in the confugration this selector
++has no value.
++.TP
++.B vendor
++.br
++The operating system vendor name, if not set in the confugration this selector
++has the value "unknown".
++.TP
++.B byte
++.br
++The endianess of the hardware.
++.TP
++.B cluster
++.br
++The name of the local cluster. It has a value only if it is set in the
++configuration.
++.TP
++.B autodir
++.br
++The base path under which external mounts are done if they are needed.
++Most mounts are done in place but some can't be and this is the base
++path under which those mounts will be done.
++.TP
++.B domain
++.br
++The local domain name. It is set to the value of the configuration
++option \fBsub_domain\fP. If sub_domain is not given in the configuration
++it is set to the domain part of the local host name, as given by
++gethostname(2).
++.TP
++.B host
++.br
++The local host name, without the domain part, as given by gethostname(2).
++.TP
++.B hostd
++.br
++The full host name. If \fBsub_domain\fP is given in the configuration
++this is set to the contatenation of \fBhost\fP and \fBsub_domain\fP deperated
++by a \fB.\fP. If \fBsub_domain\fP is not set in the configuration the value
++of \fBdomain\fP is used instead of \fBsub_domain\fP.
++.TP
++.B uid
++.br
++The numeric value of the uid of the user that first requested the mount. Note
++this is usual the same as that used by amd but can be different within autofs.
++.TP
++.B gid
++.br
++The numeric value of the gid of the user that first requested the mount. Note
++this is usual the same as that used by amd but can be different within autofs.
++.TP
++.B key
++.br
++The string value of the key being looked up.
++.TP
++.B map
++.br
++The string value of the map name used to lookup \fBkey\fPs.
++.TP
++.B path
++.br
++The string value of the full path to the mount being requested.
++.TP
++.B dollar
++.br
++Evaluates to the string "$".
++.RE
++.TP
++The \fBselectors\fP that take one argument are:
++.RS
++.TP
++.B in_network(network) ", " network(network) ", " netnumber(network) ", " wire(network)
++.br
++These \fBselectors\fP are all the same. \fBin_network()\fP is the
++preferred usage. The \fBnetwork\fP argument is an address (which may include
++a subnet mask) or network name. The function compares \fBnetwork\fP
++against each interface and returns true if \fBnetwork\fP belongs to
++the network the interface is connected to.
++.TP
++.B xhost(hostname)
++.br
++The \fBxhost()\fP selector compares \fBhostname\fP to the \fB${host}\fP
++and if it doesn't match it attempts to lookup the cannonical name
++of \fBhostname\fP and compares it to \f${host}\fP as well.
++.TP
++.B exists(filename)
++.br
++Returns true if \fBfilename\fP exits as determined by lstat(2).
++.TP
++.B true()
++.br
++Evaluates to true, the argument is ignored and may be empty.
++.TP
++.B false()
++.br
++Evaluates to false, the argument is ignored and may be empty.
++.RE
++.TP
++The \fBselectors\fP that take up to two arguments are:
++.RS
++.TP
++.B netgrp(netgroup[,hostname])
++.br
++The \fBnetgrp()\fP selector returns true if \fPhostname\fP is a member of
++the netgroup \fBnetgroup\fP. If \fBhostname\fP is not given \fB${host}\fP
++is used for the comparison.
++.TP
++.B netgrpd(netgroup[,hostname])
++.br
++The \fBnetgrpd()i\fP selector behaves the same as \fBnetgrp()\fP except
++that if \fBhostname\fP is not given \fB${hostd}\fP, the fully qualified
++hostname, is used instead of \fB${host}\fP.
++.RE
++.TP
++The \fBoptions\fP that may be used are:
++.RS
++.TP
++.B type
++.br
++This is the mount filesystem \fBtype\fP.
++It can have a value of
++.BR auto ", " link ", " linkx ", " host ", " lofs ", " ext2-4 ", "
++.BR xfs ", " nfs ", " nfsl " or " cdfs "."
++Other types that are not yet implemented or are not available iin autofs are
++.BR nfsx ", " lustre ", " jfs ", " program ", " cachefs " and " direct "."
++.TP
++.B maptype
++.br
++The \fBmaptype\fP option specifies the type of the map source and can
++have a value of \fBfile\fP, \fBnis\fP, \fBnisplus\fP, \fBexec\fP, \fBldap\fP
++or \fBhesiod\fP. Map sources either not yet implemented or not available in
++autofs are \fBsss\fP, \fBndbm\fP, \fBpasswd\fP and \fBunion\fP.
++.TP
++.B fs
++.br
++The option \fBfs\fP is used to specify the local filesystem. The meaning of
++this option (and whether or not it is used) is dependent on the mount
++filesystem \fBtype\fP.
++.TP
++.B rhost
++.br
++The remote host name for network mount requests.
++.TP
++.B rfs
++.br
++The remote host filesystem path for network mount requests.
++.TP
++.B dev
++.br
++Must resolve to the device file for local device mount
++requests.
++.TP
++.B sublink
++.br
++The \fBsublink\fP option is used to specify a subdirectory
++within the mount location to which this entry will point.
++.TP
++.B pref
++.br
++The \fBpref\fP option is used to specify a prefix that is
++prepended to the lookup key before looking up the map entry
++key.
++.TP
++.B opts
++.br
++The \fBopts\fP option is used to specify mount options to be
++used for the mount. If a "\fB-\fP" is given it is ignored.
++Options that may be used are dependend on the mount filesystem.
++.TP
++.B addopts
++.br
++The \fBaddopts\fP option is used to specify additional mount
++options used in addition to the default mount options for the
++mount location.
++.TP
++.B remopts
++.br
++The \fBaddopts\fP option is used to specify mount options used
++instead the options given in \fBopts\fP when the mount location
++is on a remote retwork.
++.RE
++.TP
++A number of \fBoptions\fP aren't available or aren't yet implemented
++within autofs, these are:
++.RS
++.TP
++.B cache
++.br
++The \fBcache option\fP isn't used by autofs. The map entry cache is
++continually updated and stale entries cleaned on re-load when map
++changes are detected so these configuration entries are not used.
++The \fBregex\fP map key matching is not implemented and may not be
++due to the potential overhead of the full map scans needed on every
++key lookup.
++.TP
++.B cachedir
++.br
++The \fBcachefs\fP filesystem is not available on Linux, a different
++implementation is used for caching network mounted file systems.
++.TP
++.B mount ", " unmount ", " umount
++.br
++These \fBoptions\fP are used by the amd \fBprogram\fP mount type which
++is not yet implemented.
++.TP
++.B delay
++.br
++This \fBoption\fP is not used by the autofs implementation and is ignored.
++.RE
++.BR
++.SH FEATURES
++.SS Key Matching
++The amd parser key matching is unusual.
++
++The key string to be looked up is constructed by prepending the prefix, if
++there is one.
++
++The resulting relative path string is matched by first trying the sting
++itself. If no match is found the last component of the key string is
++replaced with the wilcard match cahracter ("*") and a wildcard match is
++attemted. This process continues until a match is found or until the
++last match, against the wilcard match key alone, fails to match a map
++entry and the key lookup fails.
++.SS Macro Usage
++Macros are used a lot in the autofs amd implementation.
++
++Many of the option values are set as macro variables corresponding to the
++option name during the map entry parse. So they may be used in subsequent
++option values. Beware though, the order in which option values is not
++necessarily left to right so you may get unexpected results.
++.BR
++.SH EXAMPLE
++Example NFS mount map:
++.P
++Assuming we have the autofs master map entry:
++.sp
++.RS +.2i
++.ta 1.0i 3.0i
++.nf
++/test	file,amd:/etc/amd.test
++.fi
++.RE
++.sp
++And the following map in /etc/amd.test:
++.sp
++.RS +.2i
++.ta 1.0i 3.0i
++.nf
++/defaults	type:=nfs;rhost:=bilbo
++apps	rfs:=/autofs
++util	rhost:=zeus;rfs:=/work/util
++local	rfs:=/shared;sublink:=local
++.fi
++.RE
++.sp
++In the first line we have an NFS remote mount of the exported directory
++/autofs from host bilbo which would be mounted on /test/apps. Next
++another nfs mount for the exported directory /work/util from host zeus.
++This would be mounted on /test/util.
++
++Finally we have an example of the use of the \fBsublink\fP option. In
++this case the filesystem bilbo:/shared would be mounted on a path
++external the automount directory (under the direcory given by
++configuration option auto_dir) and the path /test/local either
++symlinked or bind mounted (depending on the setting autofs_use_lofs)
++to the "local" subdirectory of the external mount.
++.BR
+ .SH "SEE ALSO"
+ .BR automount (8),
+ .BR auto.master (5),
+ .BR autofs (8),
++.BR autofs.conf (5),
+ .BR mount (8).
+ .BR autofs_ldap_auth.conf (5)
+ .SH AUTHOR
+diff --git a/man/autofs.8.in b/man/autofs.8.in
+index fae0b00..7ab4242 100644
+--- a/man/autofs.8.in
++++ b/man/autofs.8.in
+@@ -49,6 +49,7 @@ will display the status of,
+ .SH "SEE ALSO"
+ .BR automount (8),
+ .BR autofs (5),
++.BR autofs.conf (5),
+ .BR auto.master (5).
+ .BR autofs_ldap_auth.conf (5)
+ .SH AUTHOR
+diff --git a/man/autofs.conf.5.in b/man/autofs.conf.5.in
+new file mode 100644
+index 0000000..aad4143
+--- /dev/null
++++ b/man/autofs.conf.5.in
+@@ -0,0 +1,412 @@
++.\" t
++.TH AUTOFS.CONF "23 Jan 2014"
++.SH NAME
++autofs.conf \- autofs configuration
++.SH "DESCRIPTION"
++.P
++Configuration settings used by
++.BR automount (8)
++may be changed in the configuration file \fB@@autofsmapdir@@/autofs.conf\fP.
++.P
++This file contains two primary sections, \fBautofs\fP and \fBamd\fP.
++.P
++Configuration entries may be present at the beginning of the
++configuration file without a section header and are implicitly
++included as part of the \fBautofs\fP section.
++.P
++Each section name is enclosed in square brackets with
++spaces between the brackets and the section name. The \fBamd\fP
++section may be followed by further sections, named by the
++top level mount point path, that contain per mount
++configuration settings.
++.SH "SECTION autofs CONFIGURATION OPTIONS"
++.P
++Configuration settings available are:
++.TP
++.B timeout
++.br
++Sets the default mount timeout in seconds. The internal program
++default is 10 minutes, but the default installed configuration
++overrides this and sets the timeout to 5 minutes to be consistent
++with earlier autofs releases.
++.TP
++.B negative_timeout
++.br
++Set the default timeout for caching failed key lookups (program default
++60). If the equivalent command line option is given it will override this
++setting.
++.TP
++.B mount_wait
++.br
++Set the default time to wait for a response from a spawned mount(8)
++before sending it a SIGTERM. Note that we still need to wait for the
++RPC layer to timeout before the sub-process exits so this isn't ideal
++but it is the best we can do. The default is to wait until mount(8)
++returns without intervention.
++.TP
++.B umount_wait
++.br
++Set the default time to wait for a response from a spawned umount(8)
++before sending it a SIGTERM. Note that we still need to wait for the
++RPC layer to timeout before the sub-process exits so this isn't ideal
++but it is the best we can do.
++.TP
++.B browse_mode
++.br
++Maps are browsable by default (program default "yes").
++.TP
++.B mount_nfs_default_protocol
++.br
++Specify the default protocol used by
++.BR mount.nfs (8)
++(program default 3). Since we can't identify this default automatically
++we need to set it in the autofs configuration.
++.TP
++.B append_options
++.br
++Determine whether global options, given on the command line or per mount
++in the master map, are appended to map entry options or if the map entry
++options replace the global options (program default "yes", append options).
++.TP
++.B logging
++.br
++set default log level "none", "verbose" or "debug" (program default "none").
++.SS LDAP Configuration
++.P
++Configuration settings available are:
++.TP
++.B ldap_timeout
++.br
++Set the network response timeout (default 8).
++Set timeout value for the synchronous API  calls. The default is the LDAP
++library default of an infinite timeout.
++.TP
++.B ldap_network_timeout
++.br
++Set the network response timeout (default 8).
++.TP
++.B ldap_uri
++.br
++A space seperated list of server uris of the form <proto>://<server>[/]
++where <proto> can be ldap or ldaps. The option can be given multiple times.
++Map entries that include a server name override this option and it is then
++not used. Default is an empty list in which case either the server given
++in a map entry or the LDAP configured default is used. This uri list is read at
++startup and whenever the daemon receives a HUP signal.
++
++This configuration option can also be used to request autofs lookup SRV RRs
++for a domain of the form <proto>:///[<domain dn>]. Note that a trailing
++"/" is not allowed when using this form. If the domain dn is not specified
++the dns domain name (if any) is used to construct the domain dn for the
++SRV RR lookup. The server list returned from an SRV RR lookup is refreshed
++according to the minimum ttl found in the SRV RR records or after one hour,
++whichever is less.
++.TP
++.B search_base
++.br
++The base dn to use when searching for amap base dn. This entry may be
++given multiple times and each will be checked for a map base dn in
++the order they occur in the configuration. The search base list is read
++at startup and whenever the daemon recieves a HUP signal.
++.TP
++.B map_object_class
++.br
++The map object class. In the \fBnisMap\fP schema this corresponds to the class
++\fBnisMap\fP and in the \fBautomountMap\fP schema it corresponds to the class
++\fBautomountMap\fP.
++.TP
++.B entry_object_class
++.br
++The map entry object class. In the \fBnisMap\fP schema this corresponds
++to the class \fBnisObject\fP and in the \fBautomountMap\fP schema it
++corresponds to the class \fBautomount\fP.
++.TP
++.B map_attribute
++.br
++The attribute used to identify the name of the map to which this
++entry belongs.  In the \fBnisMap\fP schema this corresponds to the attribute
++\fBnisMapName\fP and in the \fBautomountMap\fP schema it corresponds to the
++attribute \fBou\fP or \fBautomountMapName\fP.
++.TP
++.B entry_attribute
++.br
++The attribute used to identify a map key. In the \fBnisMap\fP schema this
++corresponds to the attribute \fBcn\fP and in the \fBautomountMap\fP schema
++it corresponds to the attribute \fBautomountKey\fP.
++.TP
++.B value_attribute
++.br
++The attribute used to identify the value of the map entry. In the \fBnisMap\fP
++schema this corresponds to the attribute \fBnisMapEntry\fP and in the \fBautomountMap\fP
++schema it corresponds to the attribute
++.BR automountInformation .
++.TP
++.B NOTE:
++It is essential that entries use class and attribute in a consistent
++manner for correct operation of autofs. For example mixing \fBcn\fP
++and \fBautomountKey\fP attributes in \fBautomount\fP schema will
++not work as expected.
++.TP
++.B auth_conf_file
++This configuration option may be used to specify an alternate location
++for the ldap authentication configuration file. See
++.BR autofs_ldap_auth.conf (5)
++for more information.
++.SH "SECTION amd CONFIGURATION OPTIONS"
++.P
++A number of the amd configuration options are not used by autofs,
++some because they are not relevant within autofs, some because
++they are done differently in autofs and others that are not yet
++implemented.
++
++Since \fBmount_type\fP is always autofs (because there's no user space
++NFS server) the configuration entries relating to that aren't used.
++Also, server availability is done differently within autofs so the
++options that relate to the amd server monitoring sub-system are
++also not used.
++
++These options are \fBmount_type\fP, \fBauto_attrcache\fP, \fBportmap_program\fP,
++\fBnfs_vers_ping\fP, \fBnfs_allow_any_interface\fP, \fBnfs_allow_insecure_port\fP,
++\fBnfs_proto\fP, \fBnfs_retransmit_counter\fP, \fBnfs_retransmit_counter_udp\fP,
++\fBnfs_retransmit_counter_tcp\fP, \fBnfs_retransmit_counter_toplvl\fP,
++\fBnfs_retry_interval\fP, \fBnfs_retry_interval_udp\fP, \fBnfs_retry_interval_tcp\fP,
++\fBnfs_retry_interval_toplvl\fP and \fBnfs_vers\fP.
++
++Other options that are not used within the autofs implementation:
++.TP
++.BR log_file ", " truncate_log
++.br autofs used either stderr when running in the foreground or
++sends its output to syslog so an alternate log file (or truncating
++the log) can't be used.
++.TP
++.B print_pid
++.br
++There's no corresponding option for this within autofs.
++.TP
++.BR use_tcpwrappers ", " show_statfs_entries
++.br
++There's no user space NFS server to control access to so this
++option isn't relevant. The show_statfs_entries can't be
++implemented for the same reason.
++.TP
++.B debug_mtab_file
++.br
++There's no user space NFS server and autofs avoids using file
++based mtab whenever possible.
++.TP
++.B sun_map_syntax
++.br
++Sun map format is handled by autofs itself.
++.TP
++.BR plock ", " show_statfs_entries ", " preferred_amq_port
++.br
++Are not supported by autofs.
++.TP
++.BR ldap_cache_maxmem ", " ldap_cache_seconds
++.br
++External ldap caching is not used by autofs.
++.TP
++.B ldap_proto_version
++.br
++autofs always attempts to use the highest available ldap
++protocol version.
++.TP
++.BR cache_duration ", " map_reload_interval ", " map_options
++.br
++The map	entry cache is continually updated and stale entries
++cleaned on re-load, which is done when map changes aredetected
++so these configuration entries are not used by autofs.
++.TP
++.B localhost_address
++This is not used within autofs. This configuration option was
++only used in the amd user space server code and is not relevant
++within autofs.
++.P
++Options that are handled differently within autofs:
++.TP
++.B pid_file
++.br
++To specify a pid file name a command line option must be used on startup.
++.TP
++.B print_version
++.br
++Program version and feature information is obtained by using the
++automount command line option "-V".
++.TP
++.B debug_options ", " log_options
++.br
++autofs has somewhat more limited logging and debug logging options.
++When the log_options options is encountered it is converted to the
++nearest matching autofs logging option. Since the configuration
++option debug_options would be handled the same way it is ignored.
++.TP
++.B restart_mounts
++.br
++This option has no sensible meaning within autofs because autofs
++always tries to re-connect to existing mounts. While this has its
++own set of problems not re-connecting to existing mounts always
++results in a non-functional automount tree if mounts were busy at
++the last shutdown (as is also the case with amd when using
++mount_type autofs).
++.TP
++.B forced_unmounts
++.br
++Detaching mounts often causes serious problems for users of
++existing mounts. It is used by autofs in some cases, either at
++the explicit request of the user (with a command line or init
++option) and in some special cases during program operation but
++is avoided whenever possible.
++.P
++A number of configuration options are not yet implemented:
++.TP
++.B search_path
++.br
++Always a little frustrating, the compiled in map location should
++be used to locate maps but isn't in some cases. This requires
++work within autofs itself and that will (obviously) include
++implementing this configuration option for the amd map parser
++as well.
++.TP
++.B fully_qualified_hosts
++Not yet implemented.
++.TP
++.B unmount_on_exit
++.br
++Since autofs always tries to re-connect to mounts left mounted
++from a previous shutdown this is a sensible option to implement
++and that will be done.
++.TP
++.B browsable_dirs
++.br
++Not yet implemented.
++.TP
++.B exec_map_timeout
++.br
++A timeout is not currently used for for program maps, might be
++implemented.
++.TP
++.B tag
++.br
++The tag option is not implemented within autofs.
++.P
++Supported options:
++.TP
++.BR arch ", " karch ", " os ", " osver
++.br
++These options default to what is returned from uname(2) and can
++be overridden if required.
++.TP
++.B full_os
++This option has no default and must be set in the configuration
++if used in maps.
++.TP
++.B cluster
++.br
++If not set defaults to the host domain name. This option corresponds
++to the HP_UX cluster name (according to the amd source) and is
++probably not used in Linux but is set anyway.
++.TP
++.B vendor
++This option has a default value of "unknown", it must be set in the
++configuration if used in maps.
++.TP
++.B auto_dir
++.br
++Is the base name of the mount tree used for external mounts that
++are sometimes needed by amd maps. Its default value is "/a".
++.TP
++.B map_type
++.br
++Specifies the autofs map source, such as file, nis, ldap etc. and
++has no default value set.
++.TP
++.B map_defaults
++.br
++This option is used to override /defaults entries within maps
++and can be used to provide different defaults on specific machines
++without having to modify centrally managed maps. It is empty by
++default.
++.TP
++.B dismount_interval
++.br
++Is equivalent to the autofs timeout option. It is only possible
++to use this with type "auto" mounts due to the way the autofs
++kernel module performs expiry. It takes its default value from
++the autofs internal defaulti of 600 seconds.
++.TP
++.B autofs_use_lofs
++.br
++If set to "yes" autofs will attempt to use bind mounts for type
++"auto" when possible.
++.TP
++.B nis_domain
++.br
++Allows setting of a domain name other than the system default.
++.TP
++.B local_domain
++.br
++Is used to override (or set) the host domain name.
++.TP
++.B normalize_hostnames
++.br
++If set to "yes" then the contents of ${rhost} is translated in
++its official host name.
++.TP
++.B domain_strip
++.br
++If set to "yes" the domain name part of the host is strippped
++when normalizing hostnames. This can be useful when using of
++the same maps in a multiple domain environment.
++.TP
++.B normalize_slashes
++.br
++This option is set to "yes" by default and will collapse
++multiple unescaped occurrences of "/" to a single "/".
++.TP
++.BR selectors_in_defaults ", " selectors_on_default
++.br
++This option has a default value of "no". If set to "yes" then
++any defaults entry will be checked for selectors to determine
++the values to be used. selectors_in_defaults is the preferred
++option to use.
++.TP
++.B ldap_base
++.br
++iThis option has no default value. It must be set to the base dn
++that is used for queries if ldap is to be used as a map source.
++.TP
++.B ldap_hostports
++.br
++This option has no default value set. It must be set to the URI
++of the LDAP server to be used for lookups wheni ldap is used a
++map source. It may contain a comma or space seperated list of
++LDAP URIs.
++.TP
++.B hesiod_base
++.br
++Sets the base name used for hesiod map sources.
++.SH EXAMPLE
++.sp
++.RS +.2i
++.ta 1.0i
++.nf
++[ autofs ]
++timeout = 300
++browse_mode = no
++
++[ amd ]
++dismount_interval = 300
++map_type = nis
++autofs_use_lofs = no
++
++[ /expamle/mount ]
++dismount_interval = 60
++map_type = file
++.fi
++.RE
++.SH "SEE ALSO"
++.BR automount (8),
++.BR auto.master (5),
++.BR autofs_ldap_auth.conf (5)
++.SH AUTHOR
++This manual page was written by Ian Kent <raven@themaw.net>.
+diff --git a/man/autofs_ldap_auth.conf.5.in b/man/autofs_ldap_auth.conf.5.in
+index fa23ce5..fe5077d 100644
+--- a/man/autofs_ldap_auth.conf.5.in
++++ b/man/autofs_ldap_auth.conf.5.in
+@@ -113,5 +113,6 @@ externally configured credential cache that is used during authentication.
+ By default, autofs will setup a memory based credential cache.
+ .SH "SEE ALSO"
+ .BR auto.master (5),
++.BR autofs.conf (5),
+ .SH AUTHOR
+ This manual page was written by Ian Kent <raven@themaw.net>.
+diff --git a/man/automount.8 b/man/automount.8
+index 79e53f0..130b24c 100644
+--- a/man/automount.8
++++ b/man/automount.8
+@@ -172,6 +172,7 @@ constructed has been detached from the mount tree.
+ .SH "SEE ALSO"
+ .BR autofs (5),
+ .BR autofs (8),
++.BR autofs.conf (5),
+ .BR auto.master (5),
+ .BR mount (8).
+ .BR autofs_ldap_auth.conf (5)

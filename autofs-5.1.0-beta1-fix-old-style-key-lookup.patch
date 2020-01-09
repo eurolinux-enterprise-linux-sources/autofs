@@ -1,0 +1,83 @@
+autofs-5.1.0-beta1 - fix old style key lookup
+
+From: Ian Kent <ikent@redhat.com>
+
+Old (old) style configuration keys all started with DEFAULT_ but
+the configuration entry lookup requires the has of the lower case
+name. So trying to these old style names failes because thet don't
+has to the same value.
+
+So change the key lookup to strip the DEFAULT_ string and retry
+the lookup so valid entries hash properly.
+---
+ CHANGELOG      |    1 +
+ lib/defaults.c |   33 +++++++++++++++++++++------------
+ 2 files changed, 22 insertions(+), 12 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -116,6 +116,7 @@
+ - fix map format init in lookup_init().
+ - fix incorrect max key length in defaults get_hash().
+ - fix xfn sets incorrect lexer state.
++- fix old style key lookup.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/lib/defaults.c
++++ autofs-5.0.7/lib/defaults.c
+@@ -673,33 +673,42 @@ static u_int32_t get_hash(const char *ke
+ 	return hash(lkey, size);
+ }
+ 
+-static struct conf_option *conf_lookup(const char *section, const char *key)
++static struct conf_option *conf_lookup_key(const char *section, const char *key)
+ {
+ 	struct conf_option *co;
+ 	u_int32_t key_hash;
+ 	unsigned int size = CFG_TABLE_SIZE;
+ 
+-	if (!key || !section)
+-		return NULL;
+-
+-	if (strlen(key) > PATH_MAX)
+-		return NULL;
+-
+ 	key_hash = get_hash(key, size);
+ 	for (co = config->hash[key_hash]; co != NULL; co = co->next) {
+ 		if (strcasecmp(section, co->section))
+ 			continue;
+ 		if (!strcasecmp(key, co->name))
+ 			break;
++	}
++
++	return co;
++}
++
++static struct conf_option *conf_lookup(const char *section, const char *key)
++{
++	struct conf_option *co;
++
++	if (!key || !section)
++		return NULL;
++
++	if (strlen(key) > PATH_MAX)
++		return NULL;
++
++	co = conf_lookup_key(section, key);
++	if (!co) {
+ 		/*
+ 		 * Strip "DEFAULT_" and look for config entry for
+ 		 * backward compatibility with old style config names.
++		 * Perhaps this should be a case sensitive compare?
+ 		 */
+-		if (strlen(key) <= 8)
+-			continue;
+-		if (!strncasecmp("DEFAULT_", key, 8) &&
+-		    !strcasecmp(key + 8, co->name))
+-			break;
++		if (strlen(key) > 8 && !strncasecmp("DEFAULT_", key, 8))
++			co = conf_lookup_key(section, key + 8);
+ 	}
+ 
+ 	return co;

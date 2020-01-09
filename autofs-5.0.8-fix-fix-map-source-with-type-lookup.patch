@@ -1,0 +1,51 @@
+autofs-5.0.8 - fix fix map source with type lookup
+
+From: Ian Kent <raven@themaw.net>
+
+The recent change to make autofs look in the defined map directory
+for map source file (or nss source files) when the map doesn't start
+with a "/" broke the internal hosts map (thanks for alerting me to
+this Leonardo).
+---
+ CHANGELOG       |    1 +
+ daemon/lookup.c |   10 ++++++++--
+ 2 files changed, 9 insertions(+), 2 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -95,6 +95,7 @@
+ - fix external env configure.
+ - make autofs(5) consistent with auto.master(5).
+ - fix map source with type lookup.
++- fix fix map source with type lookup.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/lookup.c
++++ autofs-5.0.7/daemon/lookup.c
+@@ -418,8 +418,11 @@ static int lookup_map_read_map(struct au
+ {
+ 	char *path;
+ 
+-	if (!map->argv[0])
++	if (!map->argv[0]) {
++		if (!strcmp(map->type, "hosts"))
++			return do_read_map(ap, map, age);
+ 		return NSS_STATUS_UNKNOWN;
++	}
+ 
+ 	/*
+ 	 * This is only called when map->type != NULL.
+@@ -817,8 +820,11 @@ static int do_name_lookup_mount(struct a
+ {
+ 	char *path;
+ 
+-	if (!map->argv[0])
++	if (!map->argv[0]) {
++		if (!strcmp(map->type, "hosts"))
++			return do_lookup_mount(ap, map, name, name_len);
+ 		return NSS_STATUS_UNKNOWN;
++	}
+ 
+ 	/*
+ 	 * This is only called when map->type != NULL.

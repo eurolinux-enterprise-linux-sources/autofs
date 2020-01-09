@@ -1,0 +1,60 @@
+autofs-5.1.2 - add function conf_amd_get_map_name()
+
+From: Ian Kent <raven@themaw.net>
+
+Add configuration function to get the map_name option from
+an amd mount configuration section.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ include/defaults.h |    1 +
+ lib/defaults.c     |   10 ++++++++++
+ 3 files changed, 12 insertions(+)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -225,6 +225,7 @@
+ - fix typos in README.amd-maps.
+ - add ref counting to struct map_source.
+ - add support for amd browsable option.
++- add function conf_amd_get_map_name().
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/include/defaults.h
++++ autofs-5.0.7/include/defaults.h
+@@ -191,6 +191,7 @@ char *conf_amd_get_nfs_proto(void);
+ char *conf_amd_get_nis_domain(void);
+ unsigned int conf_amd_set_nis_domain(const char *);
+ char *conf_amd_get_map_defaults(const char *);
++char *conf_amd_get_map_name(const char *);
+ char *conf_amd_get_map_type(const char *);
+ char *conf_amd_get_search_path(const char *);
+ unsigned int conf_amd_get_dismount_interval(const char *);
+--- autofs-5.0.7.orig/lib/defaults.c
++++ autofs-5.0.7/lib/defaults.c
+@@ -105,6 +105,7 @@
+ #define NAME_AMD_MAP_DEFAULTS			"map_defaults"
+ #define NAME_AMD_MAP_OPTIONS			"map_options"
+ #define NAME_AMD_MAP_RELOAD_INTERVAL		"map_reload_interval"
++#define NAME_AMD_MAP_NAME			"map_name"
+ #define NAME_AMD_MAP_TYPE			"map_type"
+ #define NAME_AMD_MOUNT_TYPE			"mount_type"
+ #define NAME_AMD_PID_FILE			"pid_file"
+@@ -1914,6 +1915,15 @@ char *conf_amd_get_map_defaults(const ch
+ 
+ 	return tmp;
+ }
++
++char *conf_amd_get_map_name(const char *section)
++{
++	char *tmp = NULL;
++	if (section)
++		tmp = conf_get_string(section, NAME_AMD_MAP_NAME);
++
++	return tmp;
++}
+ 
+ char *conf_amd_get_map_type(const char *section)
+ {

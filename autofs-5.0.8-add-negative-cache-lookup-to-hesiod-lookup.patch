@@ -1,0 +1,89 @@
+autofs-5.0.8 - add negative cache lookup to hesiod lookup
+
+From: Ian Kent <raven@themaw.net>
+
+Warning, this is completely untested.
+
+I don't have a hesiod test environment so I can't test this at all.
+If we do in fact have hesiod users then I'll need to work with them
+to fix any reported problems.
+---
+ CHANGELOG               |    1 +
+ modules/lookup_hesiod.c |   39 ++++++++++++++++++++++++++++++++++++++-
+ 2 files changed, 39 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -91,6 +91,7 @@
+ - fix bad mkdir permission on create.
+ - fix macro_addvar() and move init to main thread.
+ - change walk_tree() to take ap.
++- add negative cache lookup to hesiod lookup.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/lookup_hesiod.c
++++ autofs-5.0.7/modules/lookup_hesiod.c
+@@ -99,10 +99,11 @@ int lookup_read_map(struct autofs_point
+  */
+ int lookup_mount(struct autofs_point *ap, const char *name, int name_len, void *context)
+ {
++	struct lookup_context *ctxt = (struct lookup_context *) context;
+ 	struct map_source *source;
+ 	struct mapent_cache *mc;
++	struct mapent *me;
+ 	char **hes_result;
+-	struct lookup_context *ctxt = (struct lookup_context *) context;
+ 	int status, rv;
+ 	char **record, *best_record = NULL, *p;
+ 	int priority, lowest_priority = INT_MAX;	
+@@ -117,6 +118,32 @@ int lookup_mount(struct autofs_point *ap
+ 	      MODPREFIX "looking up root=\"%s\", name=\"%s\"",
+ 	      ap->path, name);
+ 
++	/* Check if we recorded a mount fail for this key anywhere */
++	me = lookup_source_mapent(ap, name, LKP_DISTINCT);
++	if (me) {
++		if (me->status >= time(NULL)) {
++			cache_unlock(me->mc);
++			return NSS_STATUS_NOTFOUND;
++		} else {
++			struct mapent_cache *smc = me->mc;
++			struct mapent *sme;
++
++			if (me->mapent)
++				cache_unlock(smc);
++			else {
++				cache_unlock(smc);
++				cache_writelock(smc);
++				sme = cache_lookup_distinct(smc, name);
++				/* Negative timeout expired for non-existent entry. */
++				if (sme && !sme->mapent) {
++					if (cache_pop_mapent(sme) == CHE_FAIL)
++						cache_delete(smc, name);
++				}
++				cache_unlock(smc);
++			}
++		}
++	}
++
+ 	chdir("/");		/* If this is not here the filesystem stays
+ 				   busy, for some reason... */
+ 
+@@ -171,6 +198,16 @@ int lookup_mount(struct autofs_point *ap
+ 	if (status)
+ 		fatal(status);
+ 
++	if (rv) {
++		/* Don't update negative cache when re-connecting */
++		if (ap->flags & MOUNT_FLAG_REMOUNT)
++			return NSS_STATUS_TRYAGAIN;
++		cache_writelock(mc);
++		cache_update_negative(mc, source, name, ap->negative_timeout);
++		cache_unlock(mc);
++		return NSS_STATUS_TRYAGAIN;
++	}
++
+ 	/*
+ 	 * Unavailable due to error such as module load fail 
+ 	 * or out of memory, etc.

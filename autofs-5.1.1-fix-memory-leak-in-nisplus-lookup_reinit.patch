@@ -1,0 +1,36 @@
+autofs-5.1.1 - fix memory leak in nisplus lookup_reinit()
+
+From: Ian Kent <raven@themaw.net>
+
+Don't forget to free context on reinit error.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG                |    1 +
+ modules/lookup_nisplus.c |    4 +++-
+ 2 files changed, 4 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -198,6 +198,7 @@
+ - change lookup to use reinit instead of reopen.
+ - fix unbind sasl external mech.
+ - fix sasl connection concurrancy problem.
++- fix memory leak in nisplus lookup_reinit().
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/lookup_nisplus.c
++++ autofs-5.0.7/modules/lookup_nisplus.c
+@@ -116,8 +116,10 @@ int lookup_reinit(const char *mapfmt,
+ 
+ 	new->parse = ctxt->parse;
+ 	ret = do_init(mapfmt, argc, argv, new, 1);
+-	if (ret)
++	if (ret) {
++		free(new);
+ 		return 1;
++	}
+ 
+ 	*context = new;
+ 

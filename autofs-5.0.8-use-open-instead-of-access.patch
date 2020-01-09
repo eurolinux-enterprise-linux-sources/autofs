@@ -1,0 +1,127 @@
+autofs-5.0.8 - use open(2) instead of access(2)
+
+From: Ian Kent <ikent@redhat.com>
+
+The access(2) system call has been used to trigger dependednt automounts
+in the target path when mounting. But access(2) no longer triggers the
+dependednt mounts.
+
+So use open(2) with flag O_DIRECTORY which will trigger these mounts.
+---
+ CHANGELOG      |    1 +
+ daemon/spawn.c |   30 ++++++++++++++++++------------
+ 2 files changed, 19 insertions(+), 12 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -104,6 +104,7 @@
+ - fix variable substitution description.
+ - fix incorrect append options description in README.v5-release.
+ - fix mistake in assignment.
++- use open(2) instead of access(2) to trigger dependent mounts.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/spawn.c
++++ autofs-5.0.7/daemon/spawn.c
+@@ -32,7 +32,7 @@ static pthread_mutex_t spawn_mutex = PTH
+ 
+ #define SPAWN_OPT_NONE		0x0000
+ #define SPAWN_OPT_LOCK		0x0001
+-#define SPAWN_OPT_ACCESS	0x0002
++#define SPAWN_OPT_OPEN		0x0002
+ 
+ #define MTAB_LOCK_RETRIES	3
+ 
+@@ -126,7 +126,7 @@ static int do_spawn(unsigned logopt, uns
+ 	int errp, errn;
+ 	int cancel_state;
+ 	unsigned int use_lock = options & SPAWN_OPT_LOCK;
+-	unsigned int use_access = options & SPAWN_OPT_ACCESS;
++	unsigned int use_open = options & SPAWN_OPT_OPEN;
+ 	sigset_t allsigs, tmpsig, oldsig;
+ 	struct thread_stdenv_vars *tsv;
+ 	pid_t euid = 0;
+@@ -166,6 +166,8 @@ static int do_spawn(unsigned logopt, uns
+ 		/* what to mount must always be second last */
+ 		while (*pargv++)
+ 			loc++;
++		if (loc <= 3)
++			goto done;
+ 		loc -= 2;
+ 
+ 		/*
+@@ -176,7 +178,9 @@ static int do_spawn(unsigned logopt, uns
+ 		 *
+ 		 * I hope host names are never allowed "/" as first char
+ 		 */
+-		if (use_access && *(argv[loc]) == '/') {
++		if (use_open && *(argv[loc]) == '/') {
++			int fd;
++
+ 			pid_t pgrp = getpgrp();
+ 
+ 			/*
+@@ -192,19 +196,21 @@ static int do_spawn(unsigned logopt, uns
+ 			/*
+ 			 * Trigger the recursive mount.
+ 			 *
+-			 * Ignore the access(2) return code as there may be
++			 * Ignore the open(2) return code as there may be
+ 			 * multiple waiters for this mount and we need to
+-			 * let the  VFS handle access returns to each
+-			 * individual waiter.
++			 * let the VFS handle returns to each individual
++			 * waiter.
+ 			 */
+-			access(argv[loc], F_OK);
++			fd = open(argv[loc], O_DIRECTORY);
++			if (fd != -1)
++				close(fd);
+ 
+ 			seteuid(0);
+ 			setegid(0);
+ 			if (pgrp >= 0)
+ 				setpgid(0, pgrp);
+ 		}
+-
++done:
+ 		execv(prog, (char *const *) argv);
+ 		_exit(255);	/* execv() failed */
+ 	} else {
+@@ -327,7 +333,7 @@ int spawn_mount(unsigned logopt, ...)
+ #ifdef ENABLE_MOUNT_LOCKING
+ 	options = SPAWN_OPT_LOCK;
+ #else
+-	options = SPAWN_OPT_ACCESS;
++	options = SPAWN_OPT_OPEN;
+ #endif
+ 
+ 	va_start(arg, logopt);
+@@ -360,7 +366,7 @@ int spawn_mount(unsigned logopt, ...)
+ 		p = argv + 2;
+ 	}
+ 	while ((*p = va_arg(arg, char *))) {
+-		if (options == SPAWN_OPT_ACCESS && !strcmp(*p, "-t")) {
++		if (options == SPAWN_OPT_OPEN && !strcmp(*p, "-t")) {
+ 			*(++p) = va_arg(arg, char *);
+ 			if (!*p)
+ 				break;
+@@ -429,7 +435,7 @@ int spawn_mount(unsigned logopt, ...)
+ 
+ /*
+  * For bind mounts that depend on the target being mounted (possibly
+- * itself an automount) we attempt to mount the target using an access
++ * itself an automount) we attempt to mount the target using an open(2)
+  * call. For this to work the location must be the second last arg.
+  *
+  * NOTE: If mount locking is enabled this type of recursive mount cannot
+@@ -455,7 +461,7 @@ int spawn_bind_mount(unsigned logopt, ..
+ #ifdef ENABLE_MOUNT_LOCKING
+ 	options = SPAWN_OPT_LOCK;
+ #else
+-	options = SPAWN_OPT_ACCESS;
++	options = SPAWN_OPT_OPEN;
+ #endif
+ 
+ 	/*

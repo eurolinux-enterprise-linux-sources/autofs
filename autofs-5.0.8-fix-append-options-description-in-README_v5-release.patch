@@ -1,0 +1,37 @@
+autofs-5.0.8 - fix incorrect append options description in README.v5-release
+
+From: Ian Kent <ikent@redhat.com>
+
+The statement about options not being appended by default isn't correct
+any more.
+---
+ CHANGELOG         |    1 +
+ README.v5.release |    7 ++++---
+ 2 files changed, 5 insertions(+), 3 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -102,6 +102,7 @@
+ - simple coverity fixes.
+ - fixes for samples/auto.master.
+ - fix variable substitution description.
++- fix incorrect append options description in README.v5-release.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/README.v5.release
++++ autofs-5.0.7/README.v5.release
+@@ -27,9 +27,10 @@ Differences between version 4 and versio
+ - `autofs' version 5.0.0 will refuse to run if it cannot find an
+    autofs4 kernel module that supports protocol version 5.00 or above.
+ 
+-- mount options present in the master map are now overridden by mount
+-  options in map entries instead of being accumulated. This behaviour
+-  is in line with other industry automount implementations.
++- mount options present in the master map are accumulated by default
++  which is different to the behavior of some other autofs
++  implementations. A configuration option is available to change this
++  behavior if required.
+ 
+ New in 5.0.0 is:
+ 

@@ -1,0 +1,177 @@
+autofs-5.1.2 - create thread-local ID for mount attempts
+
+From: Lars R. Damerow <lars@pixar.com>
+
+This patch creates key_thread_attempt_id as a pthread key and populates it
+in each new thread serving a mount attempt. This ID can be used in output logs
+as an easy string to grep for, allowing admins to quickly see a mount attempt's
+log entries without the messages from other attempts interleaved.
+
+The contents of the ID are intended to be opaque, but to get a chance at
+a unique value for each mount attempt, this patch does a very simple hash
+computation of the thread's wait_queue_token, the pid of the requesting
+process, and the key for the mount. The hash is based on the public domain
+sdbm library.
+
+Signed-off-by: Lars R. Damerow <lars@pixar.com>
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ daemon/automount.c  |   24 ++++++++++++++++++++++++
+ daemon/direct.c     |   17 +++++++++++++++++
+ daemon/indirect.c   |   17 +++++++++++++++++
+ include/automount.h |    6 ++++++
+ 5 files changed, 65 insertions(+)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -236,6 +236,7 @@
+ - fix bogus check in expire_cleanup().
+ - delay submount exit for amd submounts.
+ - add the mount requestor's pid to pending_args.
++- create thread-local ID for mount attempts.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/automount.c
++++ autofs-5.0.7/daemon/automount.c
+@@ -89,6 +89,7 @@ struct startup_cond suc = {
+ 	PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER, 0, 0};
+ 
+ pthread_key_t key_thread_stdenv_vars;
++pthread_key_t key_thread_attempt_id = (pthread_key_t) 0L;
+ 
+ #define MAX_OPEN_FILES		10240
+ 
+@@ -98,6 +99,17 @@ static int umount_all(struct autofs_poin
+ 
+ extern struct master *master_list;
+ 
++/* simple string hash based on public domain sdbm library */
++unsigned long sdbm_hash(const char *str, unsigned long seed)
++{
++	unsigned long hash = seed;
++	char c;
++
++	while ((c = *str++))
++		hash = c + (hash << 6) + (hash << 16) - hash;
++	return hash;
++}
++
+ static int do_mkdir(const char *parent, const char *path, mode_t mode)
+ {
+ 	int status;
+@@ -2441,6 +2453,18 @@ int main(int argc, char *argv[])
+ 		       program);
+ 		master_kill(master_list);
+ 		res = write(start_pipefd[1], pst_stat, sizeof(*pst_stat));
++		close(start_pipefd[1]);
++		release_flag_file();
++		macro_free_global_table();
++		exit(1);
++	}
++
++	status = pthread_key_create(&key_thread_attempt_id, free);
++	if (status) {
++		logerr("%s: failed to create thread data key for attempt ID!",
++		       program);
++		master_kill(master_list);
++		res = write(start_pipefd[1], pst_stat, sizeof(*pst_stat));
+ 		close(start_pipefd[1]);
+ 		release_flag_file();
+ 		macro_free_global_table();
+--- autofs-5.0.7.orig/daemon/direct.c
++++ autofs-5.0.7/daemon/direct.c
+@@ -1210,6 +1210,8 @@ static void *do_mount_direct(void *arg)
+ 	struct autofs_point *ap;
+ 	struct stat st;
+ 	int status, state;
++	char attempt_id_comp[20];
++	unsigned long *attempt_id;
+ 
+ 	args = (struct pending_args *) arg;
+ 
+@@ -1219,6 +1221,21 @@ static void *do_mount_direct(void *arg)
+ 
+ 	ap = mt.ap;
+ 
++	attempt_id = pthread_getspecific(key_thread_attempt_id);
++	if (attempt_id == NULL) {
++		attempt_id = (unsigned long *) calloc(1, sizeof(unsigned long));
++		if (attempt_id == NULL)
++			fatal(ENOMEM);
++		snprintf(attempt_id_comp, 20, "%ld", mt.wait_queue_token);
++		*attempt_id = sdbm_hash(attempt_id_comp, 0);
++		snprintf(attempt_id_comp, 20, "%u", mt.pid);
++		*attempt_id = sdbm_hash(attempt_id_comp, *attempt_id);
++		*attempt_id = sdbm_hash(mt.name, *attempt_id);
++		status = pthread_setspecific(key_thread_attempt_id, attempt_id);
++		if (status != 0)
++			fatal(status);
++	}
++
+ 	args->signaled = 1;
+ 	status = pthread_cond_signal(&args->cond);
+ 	if (status)
+--- autofs-5.0.7.orig/daemon/indirect.c
++++ autofs-5.0.7/daemon/indirect.c
+@@ -726,6 +726,8 @@ static void *do_mount_indirect(void *arg
+ 	char buf[PATH_MAX + 1];
+ 	struct stat st;
+ 	int len, status, state;
++	char attempt_id_comp[20];
++	unsigned long *attempt_id;
+ 
+ 	args = (struct pending_args *) arg;
+ 
+@@ -735,6 +737,21 @@ static void *do_mount_indirect(void *arg
+ 
+ 	ap = mt.ap;
+ 
++	attempt_id = pthread_getspecific(key_thread_attempt_id);
++	if (attempt_id == NULL) {
++		attempt_id = (unsigned long *) calloc(1, sizeof(unsigned long));
++		if (attempt_id  == NULL)
++			fatal(ENOMEM);
++		snprintf(attempt_id_comp, 20, "%ld", mt.wait_queue_token);
++		*attempt_id = sdbm_hash(attempt_id_comp, 0);
++		snprintf(attempt_id_comp, 20, "%u", mt.pid);
++		*attempt_id = sdbm_hash(attempt_id_comp, *attempt_id);
++		*attempt_id = sdbm_hash(mt.name, *attempt_id);
++		status = pthread_setspecific(key_thread_attempt_id, attempt_id);
++		if (status != 0)
++			fatal(status);
++	}
++
+ 	args->signaled = 1;
+ 	status = pthread_cond_signal(&args->cond);
+ 	if (status)
+--- autofs-5.0.7.orig/include/automount.h
++++ autofs-5.0.7/include/automount.h
+@@ -76,6 +76,8 @@ int load_autofs4_module(void);
+ #define SMB_SUPER_MAGIC    0x0000517BL
+ #define CIFS_MAGIC_NUMBER  0xFF534D42L
+ 
++#define ATTEMPT_ID_SIZE 24
++
+ /* This sould be enough for at least 20 host aliases */
+ #define HOST_ENT_BUF_SIZE	2048
+ 
+@@ -241,6 +243,8 @@ const char **copy_argv(int argc, const c
+ int compare_argv(int argc1, const char **argv1, int argc2, const char **argv2);
+ int free_argv(int argc, const char **argv);
+ 
++unsigned long sdbm_hash(const char *str, unsigned long seed);
++
+ void dump_core(void);
+ int aquire_lock(void);
+ void release_lock(void);
+@@ -480,6 +484,8 @@ struct thread_stdenv_vars {
+ 
+ extern pthread_key_t key_thread_stdenv_vars;
+ 
++extern pthread_key_t key_thread_attempt_id;
++
+ struct kernel_mod_version {
+ 	unsigned int major;
+ 	unsigned int minor;

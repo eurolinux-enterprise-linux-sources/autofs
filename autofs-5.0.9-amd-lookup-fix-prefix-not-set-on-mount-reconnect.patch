@@ -1,0 +1,101 @@
+autofs-5.0.9 - fix prefix not set on mount reconnect
+
+From: Ian Kent <raven@themaw.net>
+
+When autofs is started and there are pre-existing mounts the daemon
+will attempt to reconnect to these mounts to reconstuct the mount
+tree.
+
+This process is recursive so subordinate mounts can be reconstructed
+before parent mounts complete reconnection.
+
+Also, amd subordinate mounts of type "auto" parent mounts may need
+to use the parent mount prefix which was set post mount and wasn't
+available. So, setting the parent mount prefix has to be done near
+the beginning of parent mount operation.
+---
+ modules/mount_autofs.c |    8 ++++++++
+ modules/parse_amd.c    |   30 +++++++++++++-----------------
+ 2 files changed, 21 insertions(+), 17 deletions(-)
+
+diff --git a/modules/mount_autofs.c b/modules/mount_autofs.c
+index ab5a8e3..c7cba3a 100644
+--- a/modules/mount_autofs.c
++++ b/modules/mount_autofs.c
+@@ -255,6 +255,14 @@ int mount_mount(struct autofs_point *ap, const char *root, const char *name,
+ 
+ 	mounts_mutex_lock(ap);
+ 
++	if (source->flags & MAP_FLAG_FORMAT_AMD) {
++		struct amd_entry *am_entry = __master_find_amdmount(ap, entry->path);
++		if (am_entry && am_entry->pref) {
++			nap->pref = am_entry->pref;
++			am_entry->pref = NULL;
++		}
++	}
++
+ 	if (handle_mounts_startup_cond_init(&suc)) {
+ 		crit(ap->logopt, MODPREFIX
+ 		     "failed to init startup cond for mount %s", entry->path);
+diff --git a/modules/parse_amd.c b/modules/parse_amd.c
+index bc056a7..410f6ff 100644
+--- a/modules/parse_amd.c
++++ b/modules/parse_amd.c
+@@ -893,7 +893,6 @@ static int do_auto_mount(struct autofs_point *ap, const char *name,
+ 			 struct amd_entry *entry, unsigned int flags)
+ {
+ 	char target[PATH_MAX + 1];
+-	int ret;
+ 
+ 	if (!entry->map_type)
+ 		strcpy(target, entry->fs);
+@@ -903,18 +902,8 @@ static int do_auto_mount(struct autofs_point *ap, const char *name,
+ 		strcat(target, entry->fs);
+ 	}
+ 
+-	ret = do_mount(ap, ap->path,
+-		       name, strlen(name), target, "autofs", NULL);
+-	if (!ret) {
+-		struct autofs_point *sm;
+-		sm = master_find_submount(ap, entry->path);
+-		if (sm) {
+-			sm->pref = entry->pref;
+-			entry->pref = NULL;
+-		}
+-	}
+-
+-	return ret;
++	return do_mount(ap, ap->path,
++			name, strlen(name), target, "autofs", NULL);
+ }
+ 
+ static int do_link_mount(struct autofs_point *ap, const char *name,
+@@ -1878,17 +1867,24 @@ int parse_mount(struct autofs_point *ap, const char *name,
+ 
+ 		dequote_entry(ap, this);
+ 
++		/*
++		 * Type "auto" needs to set the prefix at mount time so
++		 * add parsed entry to parent amd mount list and remove
++		 * on mount fail.
++		 */
++		mounts_mutex_lock(ap);
++		list_add_tail(&this->entries, &ap->amdmounts);
++		mounts_mutex_unlock(ap);
++
+ 		rv = amd_mount(ap, name, this, source, sv, flags, ctxt);
+ 		mounts_mutex_lock(ap);
+ 		if (!rv) {
+-			/* Add to the parent list of mounts */
+-			list_add_tail(&this->entries, &ap->amdmounts);
+-			/* Mounted, leave it on the parent list */
++			/* Mounted, remove entry from parsed list */
+ 			list_del_init(&this->list);
+ 			mounts_mutex_unlock(ap);
+ 			break;
+ 		}
+-		/* Not mounted, remove it from the parent list */
++		/* Not mounted, remove entry from the parent list */
+ 		list_del_init(&this->entries);
+ 		mounts_mutex_unlock(ap);
+ 	}

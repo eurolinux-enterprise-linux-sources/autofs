@@ -1,0 +1,34 @@
+autofs-5.1.2 - fix count_mounts() function
+
+From: Ian Kent <raven@themaw.net>
+
+count_mounts() gets the number of mounts wrong, make it include the
+base directory also.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -219,6 +219,7 @@
+ - honor last rw in mount options when doing a bind mount.
+ - update and add README for old autofs schema.
+ - fix short memory allocation in lookup_amd_instance().
++- fix count_mounts() function.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/automount.c
++++ autofs-5.0.7/daemon/automount.c
+@@ -392,7 +392,7 @@ int count_mounts(struct autofs_point *ap
+ 	counter.count = 0;
+ 	counter.dev = dev;
+ 	
+-	if (walk_tree(path, counter_fn, 0, ap, &counter) == -1)
++	if (walk_tree(path, counter_fn, 1, ap, &counter) == -1)
+ 		return -1;
+ 
+ 	return counter.count;

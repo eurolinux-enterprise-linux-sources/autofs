@@ -1,0 +1,40 @@
+autofs-5.0.7 - only probe specific nfs version when requested
+
+From: Ian Kent <raven@themaw.net>
+
+If a specific NFS version is given as an option the set the probe flags
+to probe only that version.
+---
+ CHANGELOG           |    1 +
+ modules/mount_nfs.c |   10 +++++++++-
+ 2 files changed, 10 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -63,6 +63,7 @@
+ - teach dumpmaps to output simple key value pairs.
+ - fix get_nfs_info() probe.
+ - fix portmap lookup.
++- only probe specific nfs version if requested.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/mount_nfs.c
++++ autofs-5.0.7/modules/mount_nfs.c
+@@ -146,7 +146,15 @@ int mount_mount(struct autofs_point *ap,
+ 				if (strncmp("vers=4", cp, o_len) == 0 ||
+ 				    strncmp("nfsvers=4", cp, o_len) == 0)
+ 					vers = NFS4_VERS_MASK | TCP_SUPPORTED;
+-				else if (strstr(cp, "port=") == cp &&
++				else if (strncmp("vers=3", cp, o_len) == 0 ||
++					 strncmp("nfsvers=3", cp, o_len) == 0) {
++					vers &= ~(NFS4_VERS_MASK | NFS_VERS_MASK);
++					vers |= NFS3_REQUESTED;
++				} else if (strncmp("vers=2", cp, o_len) == 0 ||
++					 strncmp("nfsvers=2", cp, o_len) == 0) {
++					vers &= ~(NFS4_VERS_MASK | NFS_VERS_MASK);
++					vers |= NFS2_REQUESTED;
++				} else if (strstr(cp, "port=") == cp &&
+ 					 o_len - 5 < 25) {
+ 					char optport[25];
+ 

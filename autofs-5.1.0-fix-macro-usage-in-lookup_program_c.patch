@@ -1,0 +1,34 @@
+autofs-5.1.0 - fix macro usage in lookup_program.c
+
+From: Ian Kent <raven@themaw.net>
+
+The macro MAPFMT_DEFAULT is used incorrectly in a comparison in
+modules/lookup_program.c:lookup_one().
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG                |    1 +
+ modules/lookup_program.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -166,6 +166,7 @@
+ - add config option to force use of program map stdvars.
+ - fix incorrect check in parse_mount().
+ - handle duplicates in multi mounts.
++- fix macro usage in lookup_program.c.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/lookup_program.c
++++ autofs-5.0.7/modules/lookup_program.c
+@@ -190,7 +190,7 @@ static char *lookup_one(struct autofs_po
+ 		 * MAPFMT_DEFAULT must be "sun" for ->parse_init() to have setup
+ 		 * the macro table.
+ 		 */
+-		if (ctxt->mapfmt && strcmp(ctxt->mapfmt, "MAPFMT_DEFAULT")) {
++		if (ctxt->mapfmt && !strcmp(ctxt->mapfmt, MAPFMT_DEFAULT)) {
+ 			struct parse_context *pctxt = (struct parse_context *) ctxt->parse->context;
+ 			/* Add standard environment as seen by sun map parser */
+ 			pctxt->subst = addstdenv(pctxt->subst, prefix);

@@ -1,0 +1,68 @@
+autofs-5.1.2 - increase worker thread per-thread stack size
+
+From: Ian Kent <raven@themaw.net>
+
+automount(8) uses a worker thread per-thread stack size of 1M which is
+sufficient for its needs.
+
+But some glibc functions (such as nscd_getgr_r()) use alloca() to allocate
+working storage that can have an arbitary size. Since alloca() never fails
+there is no way to check for stack overflow. This has been fixed in more
+recent versions of glibc.
+
+But for older version of glibc all that can be done by automount to avoid
+this is to increase the stack size.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |   14 +++++++++++++-
+ 2 files changed, 14 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -247,6 +247,7 @@
+ - fix work around sss startup delay.
+ - improve scalability of direct mount path component.
+ - fix invalid reference in remount_active_mount().
++- increase worker thread per-thread stack size.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/automount.c
++++ autofs-5.0.7/daemon/automount.c
+@@ -81,6 +81,7 @@ static int cloexec_works = 0;
+ /* Attributes for creating detached and joinable threads */
+ pthread_attr_t th_attr;
+ pthread_attr_t th_attr_detached;
++size_t detached_thread_stack_size = PTHREAD_STACK_MIN * 144;
+ 
+ struct master_readmap_cond mrc = {
+ 	PTHREAD_MUTEX_INITIALIZER, PTHREAD_COND_INITIALIZER, 0, NULL, 0, 0, 0, 0};
+@@ -2483,7 +2484,7 @@ int main(int argc, char *argv[])
+ 
+ #ifdef _POSIX_THREAD_ATTR_STACKSIZE
+ 	if (pthread_attr_setstacksize(
+-			&th_attr_detached, PTHREAD_STACK_MIN*64)) {
++			&th_attr_detached, detached_thread_stack_size)) {
+ 		logerr("%s: failed to set stack size thread attribute!",
+ 		       program);
+ 		res = write(start_pipefd[1], pst_stat, sizeof(*pst_stat));
+@@ -2494,6 +2495,17 @@ int main(int argc, char *argv[])
+ 	}
+ #endif
+ 
++	if (pthread_attr_getstacksize(
++			&th_attr_detached, &detached_thread_stack_size)) {
++		logerr("%s: failed to get detached thread stack size!",
++		       program);
++		res = write(start_pipefd[1], pst_stat, sizeof(*pst_stat));
++		close(start_pipefd[1]);
++		release_flag_file();
++		macro_free_global_table();
++		exit(1);
++	}
++
+ 	info(logging, "Starting automounter version %s, master map %s",
+ 		version, master_list->name);
+ 	info(logging, "using kernel protocol version %d.%02d",

@@ -1,0 +1,227 @@
+autofs-5.0.9 - amd lookup add ufs fs type
+
+From: Ian Kent <ikent@redhat.com>
+
+Completely overlooked mount type ufs, which should be the
+system default filesystem.
+
+There's no simple way to determine what the system default
+filesystem is and am-utils needs to be continually updated
+to do this and can easily get it wrong anyway.
+
+A better approach is to use a configuration entry and set
+it to be what it usually is in am-utils, allowing the user
+to set it to what they would like it to be.
+---
+ include/defaults.h             |    2 ++
+ include/parse_amd.h            |    9 +++++----
+ lib/defaults.c                 |   10 ++++++++++
+ man/autofs.conf.5.in           |    9 +++++++++
+ modules/amd_parse.y            |    3 +++
+ modules/amd_tok.l              |    2 +-
+ modules/parse_amd.c            |   21 +++++++++++++++++++++
+ redhat/autofs.conf.default.in  |    9 +++++++++
+ samples/autofs.conf.default.in |    9 +++++++++
+ 9 files changed, 69 insertions(+), 5 deletions(-)
+
+diff --git a/include/defaults.h b/include/defaults.h
+index 033acaf..6ca20d0 100644
+--- a/include/defaults.h
++++ b/include/defaults.h
+@@ -130,6 +130,7 @@
+ #define DEFAULT_AMD_UMOUNT_ON_EXIT		"yes"
+ #define DEFAULT_AMD_USE_TCPWRAPPERS		DEFAULT_AMD_NULL_VALUE
+ #define DEFAULT_AMD_VENDOR			"unknown"
++#define DEFAULT_AMD_LINUX_UFS_MOUNT_TYPE	"ext3"
+ 
+ #ifdef WITH_LDAP
+ struct ldap_schema;
+@@ -184,6 +185,7 @@ char *conf_amd_get_map_defaults(const char *);
+ char *conf_amd_get_map_type(const char *);
+ char *conf_amd_get_search_path(const char *);
+ unsigned int conf_amd_get_dismount_interval(const char *);
++char *conf_amd_get_linux_ufs_mount_type(void);
+ unsigned long conf_amd_get_flags(const char *);
+ 
+ #endif
+diff --git a/include/parse_amd.h b/include/parse_amd.h
+index 401aadb..313edd5 100644
+--- a/include/parse_amd.h
++++ b/include/parse_amd.h
+@@ -25,10 +25,11 @@
+ #define AMD_MOUNT_TYPE_LINKX	0x00000040
+ #define AMD_MOUNT_TYPE_LOFS	0x00000080
+ #define AMD_MOUNT_TYPE_EXT	0x00000100
+-#define AMD_MOUNT_TYPE_XFS	0x00000200
+-#define AMD_MOUNT_TYPE_JFS	0x00000400
+-#define AMD_MOUNT_TYPE_CACHEFS	0x00000800
+-#define AMD_MOUNT_TYPE_CDFS	0x00001000
++#define AMD_MOUNT_TYPE_UFS	0x00000200
++#define AMD_MOUNT_TYPE_XFS	0x00000400
++#define AMD_MOUNT_TYPE_JFS	0x00000800
++#define AMD_MOUNT_TYPE_CACHEFS	0x00001000
++#define AMD_MOUNT_TYPE_CDFS	0x00002000
+ #define AMD_MOUNT_TYPE_MASK	0x0000ffff
+ 
+ #define AMD_ENTRY_CUT		0x00010000
+diff --git a/lib/defaults.c b/lib/defaults.c
+index bdaba67..3fa2216 100644
+--- a/lib/defaults.c
++++ b/lib/defaults.c
+@@ -136,6 +136,7 @@
+ #define NAME_AMD_UMOUNT_ON_EXIT			"unmount_on_exit"
+ #define NAME_AMD_USE_TCPWRAPPERS		"use_tcpwrappers"
+ #define NAME_AMD_VENDOR				"vendor"
++#define NAME_AMD_LINUX_UFS_MOUNT_TYPE		"linux_ufs_mount_type"
+ 
+ /* Status returns */
+ #define CFG_OK		0x0000
+@@ -543,6 +544,10 @@ static int conf_load_amd_defaults(void)
+ 	if (ret == CFG_FAIL)
+ 		goto error;
+ 
++	ret = conf_update(sec, NAME_AMD_LINUX_UFS_MOUNT_TYPE,
++			  DEFAULT_AMD_LINUX_UFS_MOUNT_TYPE, CONF_NONE);
++	if (ret == CFG_FAIL)
++		goto error;
+ 	return 1;
+ 
+ error:
+@@ -1706,6 +1711,11 @@ unsigned int conf_amd_get_dismount_interval(const char *section)
+ 	return (unsigned int) tmp;
+ }
+ 
++char *conf_amd_get_linux_ufs_mount_type(void)
++{
++	return conf_get_string(amd_gbl_sec, NAME_AMD_LINUX_UFS_MOUNT_TYPE);
++}
++
+ unsigned long conf_amd_get_flags(const char *section)
+ {
+ 	const char *amd = amd_gbl_sec;
+diff --git a/man/autofs.conf.5.in b/man/autofs.conf.5.in
+index f25a918..c959b52 100644
+--- a/man/autofs.conf.5.in
++++ b/man/autofs.conf.5.in
+@@ -390,6 +390,15 @@ LDAP URIs.
+ .B hesiod_base
+ .br
+ Sets the base name used for hesiod map sources.
++.TP
++.B linux_ufs_mount_type
++.br
++This is an aditional configuration option for the autofs amd format
++parser implementation.
++
++There's no simple way to determine what the system default filesystem
++is and am-utils needs to be continually updated to do this and can
++easily get it wrong ayway. So allow it to be set in the configuration.
+ .SH EXAMPLE
+ .sp
+ .RS +.2i
+diff --git a/modules/amd_parse.y b/modules/amd_parse.y
+index 87e3309..8174fb2 100644
+--- a/modules/amd_parse.y
++++ b/modules/amd_parse.y
+@@ -269,6 +269,9 @@ option_assignment: MAP_OPTION OPTION_ASSIGN FS_TYPE
+ 			   !strcmp($3, "ext4")) {
+ 			entry.flags |= AMD_MOUNT_TYPE_EXT;
+ 			entry.type = amd_strdup($3);
++		} else if (!strcmp($3, "ufs")) {
++			entry.flags |= AMD_MOUNT_TYPE_UFS;
++			entry.type = conf_amd_get_linux_ufs_mount_type();
+ 		} else if (!strcmp($3, "cdfs")) {
+ 			entry.flags |= AMD_MOUNT_TYPE_CDFS;
+ 			entry.type = amd_strdup("iso9660");
+diff --git a/modules/amd_tok.l b/modules/amd_tok.l
+index 10b1963..618bc91 100644
+--- a/modules/amd_tok.l
++++ b/modules/amd_tok.l
+@@ -99,7 +99,7 @@ MNTOPT		(opts|addopts|remopts)
+ FSOPTS		(rhost|rfs|dev|cachedir|mount|unmount|umount|delay)
+ CHEOPT		(mapdefault|none|inc|re|regexp|all)
+ MAPTYPE		(file|nis|nisplus|ldap|hesiod|exec|ndbm|passwd|union)
+-FSTYPE_LOCAL	(link|linkx|lofs|ext2|ext3|ext4|xfs|jfs|cdfs|cachefs)
++FSTYPE_LOCAL	(link|linkx|lofs|ufs|ext2|ext3|ext4|xfs|jfs|cdfs|cachefs)
+ FSTYPE_NET	(nfs|nfsx|nfsl|host)
+ FSTYPE		(auto|program|direct|lustre|{FSTYPE_LOCAL}|{FSTYPE_NET})
+ 
+diff --git a/modules/parse_amd.c b/modules/parse_amd.c
+index 790f25e..0c708e6 100644
+--- a/modules/parse_amd.c
++++ b/modules/parse_amd.c
+@@ -1245,6 +1245,22 @@ static unsigned int validate_generic_options(unsigned int logopt,
+ 	return 1;
+ }
+ 
++static unsigned int validate_ufs_fstype(unsigned int logopt,
++					struct amd_entry *entry)
++{
++	const char *type = (const char *) entry->type;
++
++	if (strcmp(type, "ext") && strcmp(type, "ext2") &&
++	    strcmp(type, "ext3") && strcmp(type, "ext4") &&
++	    strcmp(type, "xfs") && strcmp(type, "jfs")) {
++		error(logopt, MODPREFIX
++		      "%s: mount type %s not valid as ufs mount type on Linux",
++		      type);
++		return 0;
++	}
++	return 1;
++}
++
+ static unsigned int validate_host_options(unsigned int logopt,
+ 					  struct amd_entry *entry)
+ {
+@@ -1282,6 +1298,11 @@ static int amd_mount(struct autofs_point *ap, const char *name,
+ 		ret = do_generic_mount(ap, name, entry, entry->rfs, flags);
+ 		break;
+ 
++	case AMD_MOUNT_TYPE_UFS:
++		if (!validate_ufs_fstype(ap->logopt, entry))
++			return 1;
++		/* fall through to validate generic options */
++
+ 	case AMD_MOUNT_TYPE_EXT:
+ 	case AMD_MOUNT_TYPE_XFS:
+ 	case AMD_MOUNT_TYPE_CDFS:
+diff --git a/redhat/autofs.conf.default.in b/redhat/autofs.conf.default.in
+index 1fa951b..8ccd5d6 100644
+--- a/redhat/autofs.conf.default.in
++++ b/redhat/autofs.conf.default.in
+@@ -306,6 +306,15 @@ mount_nfs_default_protocol = 4
+ #
+ # hesiod_base - the base name used for hesiod map sources.
+ #
++# Additional configuration options added:
++#
++# linux_ufs_mount_type - set the default system filesystem type that's
++#	used for mount type ufs. There's no simple way to determine
++#	what the system default filesystem is and am-utils needs to
++#	be continually updated to do this and can easily get it wrong
++#	anyway.
++#
++#
+ # Define global options for the amd parser within autofs.
+ #
+ [ amd ]
+diff --git a/samples/autofs.conf.default.in b/samples/autofs.conf.default.in
+index 7a84566..934e411 100644
+--- a/samples/autofs.conf.default.in
++++ b/samples/autofs.conf.default.in
+@@ -305,6 +305,15 @@ browse_mode = no
+ #
+ # hesiod_base - the base name used for hesiod map sources.
+ #
++# Additional configuration options added:
++#
++# linux_ufs_mount_type - set the default system filesystem type that's
++#	used for mount type ufs. There's no simple way to determine
++#	what the system default filesystem is and am-utils needs to
++#	be continually updated to do this and can easily get it wrong
++#	anyway.
++#
++#
+ # Define global options for the amd parser within autofs.
+ #
+ [ amd ]

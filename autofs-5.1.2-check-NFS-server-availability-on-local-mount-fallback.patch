@@ -1,0 +1,96 @@
+autofs-5.1.2 - check NFS server availability on local mount fallback
+
+From: Ian Kent <raven@themaw.net>
+
+The availability probe isn't done for anything autofs thinks is a
+local mount because it's the local machine.
+
+It first tries a bind mount and if that fails it falls back to trying
+a local NFS mount. If the local NFS server is not running mount.nfs(8)
+can suffer a lengthy timeout.
+
+So check for the bind mount fallback case and check if an NFS server
+is responding before trying the mount.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ lib/rpc_subs.c      |   11 +++++++++++
+ modules/mount_nfs.c |   15 ++++++++++++++-
+ 3 files changed, 26 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -215,6 +215,7 @@
+ - make lookup_nss_read_master() return nss status.
+ - make set_direct_mount_catatonic() more general.
+ - set autofs mounts catatonic at exit.
++- check NFS server availability on local mount fallback.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/lib/rpc_subs.c
++++ autofs-5.0.7/lib/rpc_subs.c
+@@ -1053,6 +1053,7 @@ static int __rpc_ping(const char *host,
+ 
+ int rpc_ping(const char *host, long seconds, long micros, unsigned int option)
+ {
++	unsigned long vers4 = NFS4_VERSION;
+ 	unsigned long vers3 = NFS3_VERSION;
+ 	unsigned long vers2 = NFS2_VERSION;
+ 	int status;
+@@ -1065,6 +1066,12 @@ int rpc_ping(const char *host, long seco
+ 	if (status > 0)
+ 		return RPC_PING_V3 | RPC_PING_UDP;
+ 
++	/* UDP isn't recommended for NFSv4, don't bother checking it.
++	status = __rpc_ping(host, vers4, IPPROTO_UDP, seconds, micros, option);
++	if (status > 0)
++		return RPC_PING_V4 | RPC_PING_UDP;
++	*/
++
+ 	status = __rpc_ping(host, vers2, IPPROTO_TCP, seconds, micros, option);
+ 	if (status > 0)
+ 		return RPC_PING_V2 | RPC_PING_TCP;
+@@ -1073,6 +1080,10 @@ int rpc_ping(const char *host, long seco
+ 	if (status > 0)
+ 		return RPC_PING_V3 | RPC_PING_TCP;
+ 
++	status = __rpc_ping(host, vers4, IPPROTO_TCP, seconds, micros, option);
++	if (status > 0)
++		return RPC_PING_V4 | RPC_PING_TCP;
++
+ 	return status;
+ }
+ 
+--- autofs-5.0.7.orig/modules/mount_nfs.c
++++ autofs-5.0.7/modules/mount_nfs.c
+@@ -347,6 +347,19 @@ dont_probe:
+ 		strcat(loc, ":");
+ 		strcat(loc, this->path);
+ 
++		/* If this is a fallback from a bind mount failure
++		 * check if the local NFS server is available to try
++		 * and prevent lengthy mount failure waits.
++		 */
++		if (this->proximity == PROXIMITY_LOCAL) {
++			char *host = this->name ? this->name : "localhost";
++			int ret;
++
++			ret = rpc_ping(host, 2, 0, RPC_CLOSE_DEFAULT);
++			if (ret <= 0)
++				goto next;
++		}
++
+ 		if (nfsoptions && *nfsoptions) {
+ 			debug(ap->logopt,
+ 			      MODPREFIX "calling mount -t %s " SLOPPY 
+@@ -369,7 +382,7 @@ dont_probe:
+ 			free_host_list(&hosts);
+ 			return 0;
+ 		}
+-
++next:
+ 		free(loc);
+ 		this = this->next;
+ 	}

@@ -1,0 +1,46 @@
+autofs-5.1.1 - fix 'nameing' typo in autofs.conf
+
+From: Ian Kent <raven@themaw.net>
+
+Change nameing to naming at about line 118 in autofs package default
+configurations.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG                      |    1 +
+ redhat/autofs.conf.default.in  |    2 +-
+ samples/autofs.conf.default.in |    2 +-
+ 3 files changed, 3 insertions(+), 2 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -185,6 +185,7 @@
+ - make service want network-online.
+ - add remote-fs.target systemd dependency.
+ - gaurd against incorrect umount return.
++- fix typo in autofs.conf.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/redhat/autofs.conf.default.in
++++ autofs-5.0.7/redhat/autofs.conf.default.in
+@@ -115,7 +115,7 @@ mount_nfs_default_protocol = 4
+ #entry_attribute = cn
+ #value_attribute= nisMapEntry
+ #
+-# Other common LDAP nameing
++# Other common LDAP naming
+ #
+ #map_object_class = automountMap
+ #entry_object_class = automount
+--- autofs-5.0.7.orig/samples/autofs.conf.default.in
++++ autofs-5.0.7/samples/autofs.conf.default.in
+@@ -114,7 +114,7 @@ browse_mode = no
+ #entry_attribute = cn
+ #value_attribute= nisMapEntry
+ #
+-# Other common LDAP nameing
++# Other common LDAP naming
+ #
+ #map_object_class = automountMap
+ #entry_object_class = automount

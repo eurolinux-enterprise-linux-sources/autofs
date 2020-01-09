@@ -1,0 +1,30 @@
+autofs-5.1.0 - fix memory leak in conf_amd_get_log_options()
+
+From: Ian Kent <raven@themaw.net>
+
+Fix obvious memory leak in conf_amd_get_log_options().
+---
+ CHANGELOG      |    1 +
+ lib/defaults.c |    1 +
+ 2 files changed, 2 insertions(+)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -133,6 +133,7 @@
+ - fix leak in cache_push_mapent().
+ - fix config entry read buffer not checked.
+ - fix FILE pointer check in defaults_read_config().
++- fix memory leak in conf_amd_get_log_options().
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/lib/defaults.c
++++ autofs-5.0.7/lib/defaults.c
+@@ -1794,6 +1794,7 @@ unsigned int conf_amd_get_log_options(vo
+ 			if (log_level < LOG_CRIT)
+ 				log_level = LOG_CRIT;
+ 		}
++		free(tmp);
+ 	}
+ 
+ 	if (log_level == -1)

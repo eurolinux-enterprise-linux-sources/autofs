@@ -1,0 +1,47 @@
+autofs-5.0.8 - dont ignore null cache entries on multi mount umount
+
+From: Ian Kent <raven@themaw.net>
+
+When umounting the offsets of a multi-mount negative cache entries
+shouldn't be ignored. Even if the mount they correspond to failed to
+mount the trigger still needs to be umounted.
+
+Not ignoring negative entries when cleaning stale multi-mount entries
+isn't obviously the right thing to do but, since the multi-mount entry
+should have been refreshed, there shouldn't be any valid negative entries
+so they must be stale and need to go.
+---
+ CHANGELOG    |    1 +
+ lib/mounts.c |    4 ++--
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -97,6 +97,7 @@
+ - fix map source with type lookup.
+ - fix fix map source with type lookup.
+ - fix lookup_nss_mount() map lookup.
++- dont ignore null cache entries on multi mount umount.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/lib/mounts.c
++++ autofs-5.0.7/lib/mounts.c
+@@ -1804,7 +1804,7 @@ int umount_multi_triggers(struct autofs_
+ 
+ 		oe = cache_lookup_offset(mm_base, offset, start, &me->multi_list);
+ 		/* root offset is a special case */
+-		if (!oe || !oe->mapent || (strlen(oe->key) - start) == 1)
++		if (!oe || (strlen(oe->key) - start) == 1)
+ 			continue;
+ 
+ 		/*
+@@ -1926,7 +1926,7 @@ int clean_stale_multi_triggers(struct au
+ 
+ 		oe = cache_lookup_offset(mm_base, offset, start, &me->multi_list);
+ 		/* root offset is a special case */
+-		if (!oe || !oe->mapent || (strlen(oe->key) - start) == 1)
++		if (!oe || (strlen(oe->key) - start) == 1)
+ 			continue;
+ 
+ 		/* Check for and umount stale subtree offsets */

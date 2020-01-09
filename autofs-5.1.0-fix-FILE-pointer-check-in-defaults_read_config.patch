@@ -1,0 +1,78 @@
+autofs-5.1.0 - fix FILE pointer check in defaults_read_config()
+
+From: Ian Kent <raven@themaw.net>
+
+Fix possible use after free usage of FILE pointer in defaults_read_config().
+---
+ CHANGELOG      |    1 +
+ lib/defaults.c |   15 +++++++--------
+ 2 files changed, 8 insertions(+), 8 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -132,6 +132,7 @@
+ - fix race accessing qdn in get_query_dn().
+ - fix leak in cache_push_mapent().
+ - fix config entry read buffer not checked.
++- fix FILE pointer check in defaults_read_config().
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/lib/defaults.c
++++ autofs-5.0.7/lib/defaults.c
+@@ -1055,6 +1055,8 @@ unsigned int defaults_read_config(unsign
+ 
+ 	ret = 1;
+ 
++	conf = oldconf = NULL;
++
+ 	pthread_mutex_lock(&conf_mutex);
+ 	if (!config) {
+ 		if (conf_init()) {
+@@ -1081,15 +1083,11 @@ unsigned int defaults_read_config(unsign
+ 	    stb.st_mtime <= config->modified &&
+ 	    (oldstat = fstat(fileno(oldconf), &oldstb) == -1) &&
+ 	    oldstb.st_mtime <= config->modified) {
+-		fclose(conf);
+-		fclose(oldconf);
+ 		goto out;
+ 	}
+ 
+ 	if (conf || oldconf) {
+ 		if (!reset_defaults(to_syslog)) {
+-			fclose(conf);
+-			fclose(oldconf);
+ 			ret = 0;
+ 			goto out;
+ 		}
+@@ -1107,10 +1105,8 @@ unsigned int defaults_read_config(unsign
+ 		}
+ 	}
+ 
+-	if (conf) {
++	if (conf)
+ 		read_config(to_syslog, conf, DEFAULT_CONFIG_FILE);
+-		fclose(conf);
+-	}
+ 
+ 	/*
+ 	 * Read the old config file and override the installed
+@@ -1131,7 +1127,6 @@ unsigned int defaults_read_config(unsign
+ 			clean_ldap_multi_option(NAME_LDAP_URI);
+ 
+ 		read_config(to_syslog, oldconf, OLD_CONFIG_FILE);
+-		fclose(oldconf);
+ 
+ 		if (ldap_search_base) {
+ 			co = conf_lookup(sec, NAME_SEARCH_BASE);
+@@ -1150,6 +1145,10 @@ unsigned int defaults_read_config(unsign
+ 		}
+ 	}
+ out:
++	if (conf)
++		fclose(conf);
++	if (oldconf)
++		fclose(oldconf);
+ 	pthread_mutex_unlock(&conf_mutex);
+ 	return ret;
+ }

@@ -1,0 +1,40 @@
+autofs-5.1.4 - fix incorrect locking in sss lookup
+
+From: Ian Kent <raven@themaw.net>
+
+Commit 766e0f6c4, autofs-5.0.7 - fix fix wildcard multi map regression,
+introduced a deadlock during restart when the sss modules is used.
+
+Looking at the comment above the code which takes the lock it clearly
+does this incorrectly.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG            |    1 +
+ modules/lookup_sss.c |    4 ++--
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -310,6 +310,7 @@
+ - set bind mount as propagation slave.
+ - add master map pseudo options for mount propagation.
+ - fix amd parser opts option handling.
++- fix incorrect locking in sss lookup.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/lookup_sss.c
++++ autofs-5.0.7/modules/lookup_sss.c
+@@ -786,9 +786,9 @@ int lookup_mount(struct autofs_point *ap
+ 	 * when we're starting up so just take the readlock in that
+ 	 */
+ 	if (ap->flags & MOUNT_FLAG_REMOUNT)
+-		cache_writelock(mc);
+-	else
+ 		cache_readlock(mc);
++	else
++		cache_writelock(mc);
+ 	me = cache_lookup(mc, key);
+ 	/* Stale mapent => check for entry in alternate source or wildcard */
+ 	if (me && !me->mapent) {

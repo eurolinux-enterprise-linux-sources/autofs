@@ -1,0 +1,86 @@
+autofs-5.1.2 - capture cache option and its settings during parsing
+
+From: Ian Kent <raven@themaw.net>
+
+The amd map format parser was not aware of the optional sync
+parameter of the cache option.
+
+Make the parser aware of the sync option and capture the cache
+option and its settings during map parsing.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ include/parse_amd.h |    7 +++++++
+ modules/amd_parse.y |   12 +++++++++---
+ modules/amd_tok.l   |    2 +-
+ 4 files changed, 18 insertions(+), 4 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -230,6 +230,7 @@
+ - include amd mount sections mounts in master mounts list.
+ - check for conflicting amd section mounts.
+ - add function conf_get_map_options().
++- capture cache option and its settings during parsing.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/include/parse_amd.h
++++ autofs-5.0.7/include/parse_amd.h
+@@ -39,9 +39,16 @@
+ #define AMD_DEFAULTS_RESET	0x02000000
+ #define AMD_DEFAULTS_MASK	0xff000000
+ 
++#define AMD_CACHE_OPTION_NONE	0x0000
++#define AMD_CACHE_OPTION_INC	0x0001
++#define AMD_CACHE_OPTION_ALL	0x0002
++#define AMD_CACHE_OPTION_REGEXP	0x0004
++#define AMD_CACHE_OPTION_SYNC	0x8000
++
+ struct amd_entry {
+ 	char *path;
+ 	unsigned long flags;
++	unsigned int cache_opts;
+ 	char *type;
+ 	char *map_type;
+ 	char *pref;
+--- autofs-5.0.7.orig/modules/amd_parse.y
++++ autofs-5.0.7/modules/amd_parse.y
+@@ -424,9 +424,14 @@ option_assignment: MAP_OPTION OPTION_ASS
+ 	}
+ 	| MAP_OPTION OPTION_ASSIGN CACHE_OPTION
+ 	{
+-		sprintf(msg_buf, "option %s is not used, autofs "
+-				 "default caching is always used", $1);
+-		amd_info(msg_buf);
++		if (strncmp($3, "inc", 3))
++			entry.cache_opts = AMD_CACHE_OPTION_INC;
++		else if (strncmp($3, "all", 3))
++			entry.cache_opts = AMD_CACHE_OPTION_ALL;
++		else if (strncmp($3, "re", 2))
++			entry.cache_opts = AMD_CACHE_OPTION_REGEXP;
++		if (strstr($3, "sync"))
++			entry.cache_opts |= AMD_CACHE_OPTION_SYNC;
+ 	}
+ 	;
+ 
+@@ -534,6 +539,7 @@ static int amd_msg(const char *s)
+ static void local_init_vars(void)
+ {
+ 	memset(&entry, 0, sizeof(entry));
++	entry.cache_opts = AMD_CACHE_OPTION_NONE;
+ 	memset(opts, 0, sizeof(opts));
+ }
+ 
+--- autofs-5.0.7.orig/modules/amd_tok.l
++++ autofs-5.0.7/modules/amd_tok.l
+@@ -101,7 +101,7 @@ NOPT		({SSTR}|(({IP4ADDR}(\/{V4MASK})?)|
+ MAPOPT		(fs|type|maptype|pref|sublink|cache)
+ MNTOPT		(opts|addopts|remopts)
+ FSOPTS		(rhost|rfs|dev|cachedir|mount|unmount|umount|delay)
+-CHEOPT		(mapdefault|none|inc|re|regexp|all)
++CHEOPT		((mapdefault|none|inc|re|regexp|all)(,sync)?)
+ MAPTYPE		(file|nis|nisplus|ldap|hesiod|exec|ndbm|passwd|union)
+ FSTYPE_LOCAL	(link|linkx|lofs|ufs|ext2|ext3|ext4|xfs|jfs|cdfs|cachefs)
+ FSTYPE_NET	(nfs|nfsx|nfsl|host)

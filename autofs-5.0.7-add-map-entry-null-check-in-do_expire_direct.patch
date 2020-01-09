@@ -1,0 +1,25 @@
+autofs-5.0.7 - add map entry null check in do_expire_direct()
+
+From: Ian Kent <raven@themaw.net>
+
+Since we've seen a mount failure for this map entry it should exist
+but add a null check in case it's been removed while we waited on
+the lock.
+---
+ daemon/direct.c |    3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/daemon/direct.c b/daemon/direct.c
+index 399ad0a..f85e1b5 100644
+--- a/daemon/direct.c
++++ b/daemon/direct.c
+@@ -1019,7 +1019,8 @@ static void *do_expire_direct(void *arg)
+ 		struct mapent *me;
+ 		cache_writelock(mt.mc);
+ 		me = cache_lookup_distinct(mt.mc, mt.name);
+-		me->ioctlfd = -1;
++		if (me)
++			me->ioctlfd = -1;
+ 		cache_unlock(mt.mc);
+ 		ops->send_ready(ap->logopt, mt.ioctlfd, mt.wait_queue_token);
+ 		ops->close(ap->logopt, mt.ioctlfd);

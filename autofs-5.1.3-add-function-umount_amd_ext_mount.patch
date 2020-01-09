@@ -1,0 +1,115 @@
+autofs-5.1.3 - add function umount_amd_ext_mount()
+
+From: Ian Kent <raven@themaw.net>
+
+Refactor amd external umount code, move the code into its own
+function.
+
+Later amd umounting of program mounts with a custom command will
+be added.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ daemon/automount.c  |   22 ++--------------------
+ include/mounts.h    |    1 +
+ lib/mounts.c        |   17 +++++++++++++++++
+ modules/parse_amd.c |    3 +--
+ 5 files changed, 22 insertions(+), 22 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -278,6 +278,7 @@
+ - fix expandamdent() quote handling.
+ - fix possible memory leak during amd parse.
+ - remove path restriction of amd external mount.
++- add function umount_amd_ext_mount().
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/automount.c
++++ autofs-5.0.7/daemon/automount.c
+@@ -614,16 +614,7 @@ static int umount_subtree_mounts(struct
+ 		}
+ 		list_del(&entry->entries);
+ 		mounts_mutex_unlock(ap);
+-		if (ext_mount_remove(&entry->ext_mount, entry->fs)) {
+-			if (umount_ent(ap, entry->fs))
+-				debug(ap->logopt,
+-				      "failed to umount external mount %s",
+-				      entry->fs);
+-			else
+-				debug(ap->logopt,
+-				      "umounted external mount %s",
+-				      entry->fs);
+-		}
++		umount_amd_ext_mount(ap, entry);
+ 		free_amd_entry(entry);
+ 	}
+ done:
+@@ -670,16 +661,7 @@ int umount_multi(struct autofs_point *ap
+ 		}
+ 		list_del(&entry->entries);
+ 		mounts_mutex_unlock(ap);
+-		if (ext_mount_remove(&entry->ext_mount, entry->fs)) {
+-			if (umount_ent(ap, entry->fs))
+-				debug(ap->logopt,
+-				      "failed to umount external mount %s",
+-				      entry->fs);
+-			else
+-				debug(ap->logopt,
+-				      "umounted external mount %s",
+-				      entry->fs);
+-		}
++		umount_amd_ext_mount(ap, entry);
+ 		free_amd_entry(entry);
+ 		return 0;
+ 	}
+--- autofs-5.0.7.orig/include/mounts.h
++++ autofs-5.0.7/include/mounts.h
+@@ -118,6 +118,7 @@ int try_remount(struct autofs_point *, s
+ void set_indirect_mount_tree_catatonic(struct autofs_point *);
+ void set_direct_mount_tree_catatonic(struct autofs_point *, struct mapent *);
+ int umount_ent(struct autofs_point *, const char *);
++int umount_amd_ext_mount(struct autofs_point *, struct amd_entry *);
+ int mount_multi_triggers(struct autofs_point *, struct mapent *, const char *, unsigned int, const char *);
+ int umount_multi_triggers(struct autofs_point *, struct mapent *, char *, const char *);
+ int clean_stale_multi_triggers(struct autofs_point *, struct mapent *, char *, const char *);
+--- autofs-5.0.7.orig/lib/mounts.c
++++ autofs-5.0.7/lib/mounts.c
+@@ -2035,6 +2035,23 @@ int umount_ent(struct autofs_point *ap,
+ 	return rv;
+ }
+ 
++int umount_amd_ext_mount(struct autofs_point *ap, struct amd_entry *entry)
++{
++	int rv = 1;
++
++	if (ext_mount_remove(&entry->ext_mount, entry->fs)) {
++		rv = umount_ent(ap, entry->fs);
++		if (rv)
++			error(ap->logopt,
++			      "failed to umount external mount %s", entry->fs);
++		else
++			debug(ap->logopt,
++			      "umounted external mount %s", entry->fs);
++	}
++
++	return rv;
++}
++
+ static int do_mount_autofs_offset(struct autofs_point *ap,
+ 				  struct mapent *oe, const char *root,
+ 				  char *offset)
+--- autofs-5.0.7.orig/modules/parse_amd.c
++++ autofs-5.0.7/modules/parse_amd.c
+@@ -982,8 +982,7 @@ symlink:
+ 
+ 	if (entry->sublink) {
+ 		/* failed to complete sublink mount */
+-		if (ext_mount_remove(&entry->ext_mount, entry->fs))
+-			umount_ent(ap, entry->fs);
++		umount_amd_ext_mount(ap, entry);
+ 	}
+ out:
+ 	return ret;

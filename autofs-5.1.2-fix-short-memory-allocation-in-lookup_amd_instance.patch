@@ -1,0 +1,33 @@
+autofs-5.1.2 - fix short memory allocation in lookup_amd_instance()
+
+From: Ian Kent <raven@themaw.net>
+
+Fix off by one memory allocation size in lookup_amd_instance().
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG       |    1 +
+ daemon/lookup.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -218,6 +218,7 @@
+ - check NFS server availability on local mount fallback.
+ - honor last rw in mount options when doing a bind mount.
+ - update and add README for old autofs schema.
++- fix short memory allocation in lookup_amd_instance().
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/lookup.c
++++ autofs-5.0.7/daemon/lookup.c
+@@ -802,7 +802,7 @@ static int lookup_amd_instance(struct au
+ 		return NSS_STATUS_UNKNOWN;
+ 	}
+ 
+-	m_key = malloc(strlen(ap->path) + strlen(me->multi->key) + 1);
++	m_key = malloc(strlen(ap->path) + strlen(me->multi->key) + 2);
+ 	if (!m_key) {
+ 		error(ap->logopt,
+ 		     "failed to allocate storage for search key");

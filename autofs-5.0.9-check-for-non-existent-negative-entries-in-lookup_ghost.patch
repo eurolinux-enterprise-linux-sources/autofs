@@ -1,0 +1,40 @@
+autofs-5.0.9 - check for non existent negative entries in lookup_ghost()
+
+From: Ian Kent <raven@themaw.net>
+
+Map entries that have been created in the cache due to a negative lookup
+but don't exist in the map source shouldn't have directories created.
+In fact map entries that are negative shouldn't have directories created
+at all since they should have neen created befor the entry became negative.
+---
+ CHANGELOG       |    1 +
+ daemon/lookup.c |    8 ++++++++
+ 2 files changed, 9 insertions(+)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -72,6 +72,7 @@
+ - fix protmap not trying proto v2.
+ - fix negative status being reset on map read.
+ - fix fix negative status being reset on map read.
++- check for non existent negative entries in lookup_ghost().
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/lookup.c
++++ autofs-5.0.7/daemon/lookup.c
+@@ -604,6 +604,14 @@ int lookup_ghost(struct autofs_point *ap
+ 		cache_readlock(mc);
+ 		me = cache_enumerate(mc, NULL);
+ 		while (me) {
++			/*
++			 * Map entries that have been created in the cache
++			 * due to a negative lookup shouldn't have directories
++			 * created if they haven't already been created.
++			 */
++			if (!me->mapent)
++				goto next;
++
+ 			if (!strcmp(me->key, "*"))
+ 				goto next;
+ 

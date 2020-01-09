@@ -1,0 +1,118 @@
+autofs-5.1.2 - limit getgrgid_r() buffer size
+
+From: Ian Kent <raven@themaw.net>
+
+Some older versions of glibc use stack allocation to store group
+information during calls to getgrgid_r(). But before doing this
+it checks if the size of the response info. can fit in the user
+supplied buffer and returns ERANGE if it can't.
+
+Now automount(8) doesn't check if the size of the buffer it is
+passing is larger than it's stack size. That's not vey accurrate
+since current stack usage isn't known but better than not checking
+at all.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG    |    1 +
+ lib/mounts.c |   47 +++++++++++++++++++++++++++++++++--------------
+ 2 files changed, 34 insertions(+), 14 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -248,6 +248,7 @@
+ - improve scalability of direct mount path component.
+ - fix invalid reference in remount_active_mount().
+ - increase worker thread per-thread stack size.
++- limit getgrgid_r() buffer size.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/lib/mounts.c
++++ autofs-5.0.7/lib/mounts.c
+@@ -48,6 +48,9 @@ static const char mnt_name_template[]
+ static struct kernel_mod_version kver = {0, 0};
+ static const char kver_options_template[]  = "fd=%d,pgrp=%u,minproto=3,maxproto=5";
+ 
++extern size_t detached_thread_stack_size;
++static size_t maxgrpbuf = 0;
++
+ #define EXT_MOUNTS_HASH_SIZE    50
+ 
+ struct ext_mount {
+@@ -1503,14 +1506,22 @@ void set_tsd_user_vars(unsigned int logo
+ 	}
+ 
+ 	gr_tmp = NULL;
++	status = ERANGE;
++	if (!maxgrpbuf)
++		maxgrpbuf = detached_thread_stack_size * 0.9;
++
++	/* If getting the group name fails go on without it. It's
++	 * used to set an environment variable for program maps
++	 * which may or may not use it so it isn't critical to
++	 * operation.
++	 */
++
+ 	tmplen = grplen;
+ 	while (1) {
+ 		char *tmp = realloc(gr_tmp, tmplen + 1);
+ 		if (!tmp) {
+ 			error(logopt, "failed to malloc buffer for getgrgid_r");
+-			if (gr_tmp)
+-				free(gr_tmp);
+-			goto free_tsv_home;
++			goto no_group;
+ 		}
+ 		gr_tmp = tmp;
+ 		pgr = &gr;
+@@ -1519,22 +1530,29 @@ void set_tsd_user_vars(unsigned int logo
+ 		if (status != ERANGE)
+ 			break;
+ 		tmplen += grplen;
++
++		/* Don't tempt glibc to alloca() larger than is (likely)
++		 * available on the stack.
++		 */
++		if (tmplen < maxgrpbuf)
++			continue;
++
++		/* Add a message so we know this happened */
++		debug(logopt, "group buffer allocation would be too large");
++		break;
+ 	}
+ 
+-	if (status || !pgr) {
++no_group:
++	if (status || !pgr)
+ 		error(logopt, "failed to get group info from getgrgid_r");
+-		free(gr_tmp);
+-		goto free_tsv_home;
++	else {
++		tsv->group = strdup(gr.gr_name);
++		if (!tsv->group)
++			error(logopt, "failed to malloc buffer for group");
+ 	}
+ 
+-	tsv->group = strdup(gr.gr_name);
+-	if (!tsv->group) {
+-		error(logopt, "failed to malloc buffer for group");
++	if (gr_tmp)
+ 		free(gr_tmp);
+-		goto free_tsv_home;
+-	}
+-
+-	free(gr_tmp);
+ 
+ 	status = pthread_setspecific(key_thread_stdenv_vars, tsv);
+ 	if (status) {
+@@ -1545,7 +1563,8 @@ void set_tsd_user_vars(unsigned int logo
+ 	return;
+ 
+ free_tsv_group:
+-	free(tsv->group);
++	if (tsv->group)
++		free(tsv->group);
+ free_tsv_home:
+ 	free(tsv->home);
+ free_tsv_user:

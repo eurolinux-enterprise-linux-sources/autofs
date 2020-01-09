@@ -1,0 +1,93 @@
+autofs-5.0.9 - amd lookup add parent prefix handling
+
+From: Ian Kent <raven@themaw.net>
+
+
+---
+ include/automount.h |    1 +
+ lib/master.c        |    3 +++
+ modules/parse_amd.c |   31 +++++++++++++++++++++++++++++++
+ 3 files changed, 35 insertions(+)
+
+diff --git a/include/automount.h b/include/automount.h
+index b304517..615efcc 100644
+--- a/include/automount.h
++++ b/include/automount.h
+@@ -491,6 +491,7 @@ struct kernel_mod_version {
+ struct autofs_point {
+ 	pthread_t thid;
+ 	char *path;			/* Mount point name */
++	char *pref;			/* amd prefix */
+ 	int pipefd;			/* File descriptor for pipe */
+ 	int kpipefd;			/* Kernel end descriptor for pipe */
+ 	int ioctlfd;			/* File descriptor for ioctls */
+diff --git a/lib/master.c b/lib/master.c
+index 4ac3c6a..df4aef6 100644
+--- a/lib/master.c
++++ b/lib/master.c
+@@ -86,6 +86,7 @@ int master_add_autofs_point(struct master_mapent *entry, unsigned logopt,
+ 		free(ap);
+ 		return 0;
+ 	}
++	ap->pref = NULL;
+ 
+ 	ap->entry = entry;
+ 	ap->exp_thread = 0;
+@@ -144,6 +145,8 @@ void master_free_autofs_point(struct autofs_point *ap)
+ 	if (status)
+ 		fatal(status);
+ 
++	if (ap->pref)
++		free(ap->pref);
+ 	free(ap->path);
+ 	free(ap);
+ }
+diff --git a/modules/parse_amd.c b/modules/parse_amd.c
+index 54da1a5..295a10f 100644
+--- a/modules/parse_amd.c
++++ b/modules/parse_amd.c
+@@ -736,6 +736,36 @@ static void normalize_sublink(unsigned int logopt,
+ 	return;
+ }
+ 
++/*
++ * Set the prefix.
++ *
++ * This is done in a couple of places, here is as good a place as
++ * any to describe it.
++ *
++ * If a prefix is present in the map entry then use it.
++ *
++ * A pref option with the value none is required to use no prefix,
++ * otherwise the prefix of the parent map, if any, will be used.
++ */
++static void update_prefix(struct autofs_point *ap,
++			  struct amd_entry *entry, const char *name)
++{
++	size_t len;
++	char *new;
++
++	if (!entry->pref && ap->pref) {
++		len = strlen(ap->pref) + strlen(name) + 2;
++		new = malloc(len);
++		if (new) {
++			strcpy(new, ap->pref);
++			strcat(new, name);
++			strcat(new, "/");
++			entry->pref = new;
++		}
++	}
++	return;
++}
++
+ static struct amd_entry *dup_defaults_entry(struct amd_entry *defaults)
+ {
+ 	struct amd_entry *entry;
+@@ -1044,6 +1074,7 @@ int parse_mount(struct autofs_point *ap, const char *name,
+ 		sv = expand_entry(ap, this, flags, sv);
+ 		sv = merge_entry_options(ap, this, sv);
+ 		normalize_sublink(ap->logopt, this, sv);
++		update_prefix(ap, this, name);
+ 
+ 		dequote_entry(ap, this);
+ 

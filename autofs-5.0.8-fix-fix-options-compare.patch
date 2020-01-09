@@ -1,0 +1,37 @@
+autofs-5.0.8 - fix fix options compare
+
+From: Ian Kent <ikent@redhat.com>
+
+The change to fix the mount options compare replaced the strncmp()
+function used to compare substrings of options with an internal
+function that also used the passed in length for the compare.
+
+But the case of a passed in length of 0 was not handled and for
+that case the function returned a value different to strncmp()
+and code that relied on that behaviour n longer behaves as expected.
+---
+ CHANGELOG      |    1 +
+ lib/cat_path.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -74,6 +74,7 @@
+ - fix fix negative status being reset on map read.
+ - check for non existent negative entries in lookup_ghost().
+ - fix options compare.
++- fix fix options compare.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/lib/cat_path.c
++++ autofs-5.0.7/lib/cat_path.c
+@@ -92,7 +92,7 @@ int _strncmp(const char *s1, const char
+ {
+ 	size_t len = strlen(s1);
+ 
+-	if (n != len)
++	if (n && n != len)
+ 		return n - len;
+ 	return strncmp(s1, s2, n);
+ }

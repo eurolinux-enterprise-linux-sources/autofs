@@ -1,0 +1,45 @@
+autofs-5.0.7 - fix add null check in parse_server_string()
+
+From: Ian Kent <raven@themaw.net>
+
+In a recent patch that added an error check for the case there's no ':' server
+name delimiter parse_server_string() braces were not added which lead to an
+incorrect parse error.
+---
+ CHANGELOG             |    1 +
+ modules/lookup_ldap.c |    4 ++--
+ 2 files changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/CHANGELOG b/CHANGELOG
+index 503a21e..5d90139 100644
+--- a/CHANGELOG
++++ b/CHANGELOG
+@@ -52,6 +52,7 @@
+ - add changlog entry for coverity fixes.
+ - fix probe each nfs version in turn for singleton mounts.
+ - misc man page fixes.
++- fix add null check in parse_server_string().
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+diff --git a/modules/lookup_ldap.c b/modules/lookup_ldap.c
+index 35ea6ea..a2bfafd 100644
+--- a/modules/lookup_ldap.c
++++ b/modules/lookup_ldap.c
+@@ -1210,14 +1210,14 @@ static int parse_server_string(unsigned logopt, const char *url, struct lookup_c
+ 		const char *q = NULL;
+ 
+ 		/* Isolate the server. Include the port spec */
+-		if (*ptr != '[')
++		if (*ptr != '[') {
+ 			q = strchr(ptr, ':');
+ 			if (!q) {
+ 				crit(logopt, MODPREFIX
+ 				     "LDAP server name not found in %s", ptr);
+ 				return 0;
+ 			}
+-		else {
++		} else {
+ 			q = ++ptr;
+ 			while (*q == ':' || isxdigit(*q))
+ 				q++;

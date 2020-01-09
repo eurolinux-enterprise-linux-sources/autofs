@@ -1,0 +1,63 @@
+autofs-5.0.8 - amd lookup add cdfs fs type
+
+From: Ian Kent <raven@themaw.net>
+
+
+---
+ include/parse_amd.h |    1 +
+ modules/amd_parse.y |    3 +++
+ modules/amd_tok.l   |    2 +-
+ modules/parse_amd.c |    1 +
+ 4 files changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/include/parse_amd.h b/include/parse_amd.h
+index 4015e9f..401aadb 100644
+--- a/include/parse_amd.h
++++ b/include/parse_amd.h
+@@ -28,6 +28,7 @@
+ #define AMD_MOUNT_TYPE_XFS	0x00000200
+ #define AMD_MOUNT_TYPE_JFS	0x00000400
+ #define AMD_MOUNT_TYPE_CACHEFS	0x00000800
++#define AMD_MOUNT_TYPE_CDFS	0x00001000
+ #define AMD_MOUNT_TYPE_MASK	0x0000ffff
+ 
+ #define AMD_ENTRY_CUT		0x00010000
+diff --git a/modules/amd_parse.y b/modules/amd_parse.y
+index 1d4a0a3..87e3309 100644
+--- a/modules/amd_parse.y
++++ b/modules/amd_parse.y
+@@ -269,6 +269,9 @@ option_assignment: MAP_OPTION OPTION_ASSIGN FS_TYPE
+ 			   !strcmp($3, "ext4")) {
+ 			entry.flags |= AMD_MOUNT_TYPE_EXT;
+ 			entry.type = amd_strdup($3);
++		} else if (!strcmp($3, "cdfs")) {
++			entry.flags |= AMD_MOUNT_TYPE_CDFS;
++			entry.type = amd_strdup("iso9660");
+ 		} else if (!strcmp($3, "jfs") ||
+ 			   !strcmp($3, "nfsx") ||
+ 			   !strcmp($3, "program") ||
+diff --git a/modules/amd_tok.l b/modules/amd_tok.l
+index 8a6d40c..10b1963 100644
+--- a/modules/amd_tok.l
++++ b/modules/amd_tok.l
+@@ -99,7 +99,7 @@ MNTOPT		(opts|addopts|remopts)
+ FSOPTS		(rhost|rfs|dev|cachedir|mount|unmount|umount|delay)
+ CHEOPT		(mapdefault|none|inc|re|regexp|all)
+ MAPTYPE		(file|nis|nisplus|ldap|hesiod|exec|ndbm|passwd|union)
+-FSTYPE_LOCAL	(link|linkx|lofs|ext2|ext3|ext4|xfs|jfs|cachefs)
++FSTYPE_LOCAL	(link|linkx|lofs|ext2|ext3|ext4|xfs|jfs|cdfs|cachefs)
+ FSTYPE_NET	(nfs|nfsx|nfsl|host)
+ FSTYPE		(auto|program|direct|lustre|{FSTYPE_LOCAL}|{FSTYPE_NET})
+ 
+diff --git a/modules/parse_amd.c b/modules/parse_amd.c
+index bc53b1d..fa0f75d 100644
+--- a/modules/parse_amd.c
++++ b/modules/parse_amd.c
+@@ -1286,6 +1286,7 @@ static int amd_mount(struct autofs_point *ap, const char *name,
+ 
+ 	case AMD_MOUNT_TYPE_EXT:
+ 	case AMD_MOUNT_TYPE_XFS:
++	case AMD_MOUNT_TYPE_CDFS:
+ 		if (!validate_generic_options(ap->logopt, fstype, entry))
+ 			return 1;
+ 		ret = do_generic_mount(ap, name, entry, entry->dev, flags);

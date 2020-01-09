@@ -1,0 +1,113 @@
+autofs-5.1.2 - handle map_option cache for top level mounts
+
+From: Ian Kent <raven@themaw.net>
+
+In order to read in the map at mount time autofs top level mounts
+must be set as browsasble but amd top level mounts that have the
+map_option cache:=all set need to read in the map without the browse
+option being set.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG            |    1 +
+ include/automount.h  |    3 +++
+ lib/master.c         |   15 +++++++++++++++
+ lib/master_parse.y   |   16 ++++++++++++++++
+ man/autofs.conf.5.in |    8 ++++++--
+ 5 files changed, 41 insertions(+), 2 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -231,6 +231,7 @@
+ - check for conflicting amd section mounts.
+ - add function conf_get_map_options().
+ - capture cache option and its settings during parsing.
++- handle map_option cache for top level mounts.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/include/automount.h
++++ autofs-5.0.7/include/automount.h
+@@ -505,6 +505,9 @@ struct kernel_mod_version {
+ /* Use symlinks instead of bind mounting local mounts */
+ #define MOUNT_FLAG_SYMLINK		0x0040
+ 
++/* Read amd map even if it's not to be ghosted (browsable) */
++#define MOUNT_FLAG_AMD_CACHE_ALL	0x0080
++
+ struct autofs_point {
+ 	pthread_t thid;
+ 	char *path;			/* Mount point name */
+--- autofs-5.0.7.orig/lib/master.c
++++ autofs-5.0.7/lib/master.c
+@@ -982,6 +982,7 @@ static void master_add_amd_mount_section
+ 		unsigned int ghost = 0;
+ 		char *type = NULL;
+ 		char *map = NULL;
++		char *opts;
+ 
+ 		ret = master_partial_match_mapent(master, path);
+ 		if (ret) {
+@@ -1036,6 +1037,20 @@ static void master_add_amd_mount_section
+ 			goto next;
+ 		}
+ 
++		opts = conf_amd_get_map_options(path);
++		if (opts) {
++			/* autofs uses the equivalent of cache:=inc,sync
++			 * (except for file maps which use cache:=all,sync)
++			 * but if the map is large then it may be necessary
++			 * to read the whole map at startup even if browsing
++			 * is is not enabled, so look for cache:=all in the
++			 * map_options configuration entry.
++			 */
++			if (strstr(opts, "cache:=all"))
++				entry->ap->flags |= MOUNT_FLAG_AMD_CACHE_ALL;
++			free(opts);
++		}
++
+ 		type = conf_amd_get_map_type(path);
+ 		argv[0] = map;
+ 		argv[1] = NULL;
+--- autofs-5.0.7.orig/lib/master_parse.y
++++ autofs-5.0.7/lib/master_parse.y
+@@ -856,6 +856,22 @@ int master_parse_entry(const char *buffe
+ 	if (negative_timeout)
+ 		entry->ap->negative_timeout = negative_timeout;
+ 
++	if (format && !strcmp(format, "amd")) {
++		char *opts = conf_amd_get_map_options(path);
++		if (opts) {
++			/* autofs uses the equivalent of cache:=inc,sync
++			 * (except for file maps which use cache:=all,sync)
++			 * but if the map is large then it may be necessary
++			 * to read the whole map at startup even if browsing
++			 * is is not enabled, so look for cache:=all in the
++			 * map_options configuration entry.
++			 */
++			if (strstr(opts, "cache:=all"))
++				entry->ap->flags |= MOUNT_FLAG_AMD_CACHE_ALL;
++			free(opts);
++		}
++	}
++
+ /*
+ 	source = master_find_map_source(entry, type, format,
+ 					local_argc, (const char **) local_argv); 
+--- autofs-5.0.7.orig/man/autofs.conf.5.in
++++ autofs-5.0.7/man/autofs.conf.5.in
+@@ -284,8 +284,12 @@ protocol version.
+ .BR cache_duration ", " map_reload_interval ", " map_options
+ .br
+ The map	entry cache is continually updated and stale entries
+-cleaned on re-load, which is done when map changes aredetected
+-so these configuration entries are not used by autofs.
++cleaned on re-load, which is done when map changes are detected
++so these configuration entries are not used by autofs. An
++exception to this is the case where the map is large. In this
++case it may be necessary to read the whole map at startup even if
++browsing is is not enabled. Adding the cache:=all option to
++map_options can be used to for this.
+ .TP
+ .B localhost_address
+ This is not used within autofs. This configuration option was

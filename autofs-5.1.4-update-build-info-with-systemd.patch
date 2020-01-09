@@ -1,0 +1,41 @@
+autofs-5.1.4 - update build info with systemd
+
+From: Ian Kent <raven@themaw.net>
+
+Update the show_build_info() function to include systemd
+build info.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |    9 +++++++++
+ 2 files changed, 10 insertions(+)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -312,6 +312,7 @@
+ - fix amd parser opts option handling.
+ - fix incorrect locking in sss lookup.
+ - add NULL check in prepare_attempt_prefix().
++- update build info with systemd.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/automount.c
++++ autofs-5.0.7/daemon/automount.c
+@@ -1952,6 +1952,15 @@ static void show_build_info(void)
+ 	}
+ #endif
+ 
++#ifdef WITH_SYSTEMD
++	printf("WITH_SYSTEMD ");
++	count = count + 13;
++
++	if (count > 60) {
++		printf("\n  ");
++		count = 0;
++	}
++#endif
+ 
+ #ifdef WITH_HESIOD
+ 	printf("WITH_HESIOD ");

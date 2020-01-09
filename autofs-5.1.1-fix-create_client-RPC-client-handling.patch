@@ -1,0 +1,104 @@
+autofs-5.1.1 - fix create_client() RPC client handling
+
+From: Ian Kent <raven@themaw.net>
+
+The autofs socket minimization strategy is to reuse the socket
+descriptor when creating an RPC client for the same protocol.
+
+But in create_client() there is a case where the socket descriptor
+can be obtained from RPC client, the RPC client destroyed, but
+not cleared in the persistent data structure.
+
+In create_client(), once an attempt is done to get the socket
+descriptor, the RPC client should always be destroyed and cleared
+in the persistent data structure.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG      |    1 +
+ lib/rpc_subs.c |   21 ++++++++-------------
+ 2 files changed, 9 insertions(+), 13 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -295,6 +295,7 @@
+ - fix prefix option handling in expand_entry().
+ - fix sublink option not set from defaults.
+ - fix error return in do_nfs_mount().
++- fix create_client() RPC client handling.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/lib/rpc_subs.c
++++ autofs-5.0.7/lib/rpc_subs.c
+@@ -663,14 +663,12 @@ static int create_client(struct conn_inf
+ 	*client = NULL;
+ 
+ 	if (info->client) {
+-		if (!clnt_control(info->client, CLGET_FD, (char *) &fd)) {
+-			fd = RPC_ANYSOCK;
+-			clnt_destroy(info->client);
+-			info->client = NULL;
+-		} else {
++		if (clnt_control(info->client, CLGET_FD, (char *) &fd))
+ 			clnt_control(info->client, CLSET_FD_NCLOSE, NULL);
+-			clnt_destroy(info->client);
+-		}
++		else
++			fd = RPC_ANYSOCK;
++		clnt_destroy(info->client);
++		info->client = NULL;
+ 	}
+ 
+ 	if (info->addr) {
+@@ -686,7 +684,7 @@ static int create_client(struct conn_inf
+ 			goto out_close;
+ 		}
+ 
+-		if (!info->client && fd != RPC_ANYSOCK) {
++		if (fd != RPC_ANYSOCK) {
+ 			close(fd);
+ 			fd = RPC_ANYSOCK;
+ 		}
+@@ -704,7 +702,6 @@ static int create_client(struct conn_inf
+ 	if (ret) {
+ 		error(LOGOPT_ANY,
+ 		      "hostname lookup failed: %s", gai_strerror(ret));
+-		info->client = NULL;
+ 		goto out_close;
+ 	}
+ 
+@@ -723,7 +720,7 @@ static int create_client(struct conn_inf
+ 			goto out_close;
+ 		}
+ 
+-		if (!info->client && fd != RPC_ANYSOCK) {
++		if (fd != RPC_ANYSOCK) {
+ 			close(fd);
+ 			fd = RPC_ANYSOCK;
+ 		}
+@@ -735,7 +732,6 @@ static int create_client(struct conn_inf
+ 
+ done:
+ 	if (!*client) {
+-		info->client = NULL;
+ 		ret = -ENOTCONN;
+ 		goto out_close;
+ 	}
+@@ -743,7 +739,6 @@ done:
+ 	/* Close socket fd on destroy, as is default for rpcowned fds */
+ 	if  (!clnt_control(*client, CLSET_FD_CLOSE, NULL)) {
+ 		clnt_destroy(*client);
+-		info->client = NULL;
+ 		ret = -ENOTCONN;
+ 		goto out_close;
+ 	}
+@@ -751,7 +746,7 @@ done:
+ 	return 0;
+ 
+ out_close:
+-	if (fd != -1)
++	if (fd != RPC_ANYSOCK)
+ 		close(fd);
+ 	return ret;
+ }

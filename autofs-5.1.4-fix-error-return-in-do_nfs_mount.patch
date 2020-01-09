@@ -1,0 +1,31 @@
+autofs-5.1.4 - fix error return in do_nfs_mount()
+
+From: Ian Kent <raven@themaw.net>
+
+Fix incorrect error return in modules/parse_amd.c:do_nfs_mount().
+---
+ CHANGELOG           |    1 +
+ modules/parse_amd.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -294,6 +294,7 @@
+ - dont use array for path when not necessary.
+ - fix prefix option handling in expand_entry().
+ - fix sublink option not set from defaults.
++- fix error return in do_nfs_mount().
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/parse_amd.c
++++ autofs-5.0.7/modules/parse_amd.c
+@@ -1101,7 +1101,7 @@ static int do_nfs_mount(struct autofs_po
+ 	if (strlen(entry->rhost) + strlen(entry->rfs) + 1 > PATH_MAX) {
+ 		error(ap->logopt, MODPREFIX
+ 		     "error: rhost + rfs options length is too long");
+-		return 0;
++		return 1;
+ 	}
+ 
+ 	strcpy(target, entry->rhost);

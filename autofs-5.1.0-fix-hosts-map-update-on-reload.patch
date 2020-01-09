@@ -1,0 +1,80 @@
+autofs-5.1.0 - fix hosts map update on reload
+
+From: Ian Kent <ikent@redhat.com>
+
+Commit aedfd5aa - "amd lookup fix host mount naming" introduced a
+regression when updating sun format maps.
+
+The amd host mount type assumes the lookup name is the host name for
+the host mount but amd uses ${rhost} for this.
+
+This introduces the possibility of multiple concurrent mount requests
+since constructing a mount tree that isn't under the lookup name can't
+take advantage of the kernel queuing of other concurrent lookups while
+the mount tree is constructed.
+
+Consequently multi-mount updates (currently only done for the internal
+hosts map which the amd parser also uses for its hosts map) can't be
+allowed for amd mounts.
+---
+ CHANGELOG           |    1 +
+ modules/parse_sun.c |   37 ++++++++++++++++++++++++++++---------
+ 2 files changed, 29 insertions(+), 9 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -158,6 +158,7 @@
+ - update man page autofs(8) for systemd.
+ - fix fix master map type check.
+ - fix typo in update_hosts_mounts().
++- fix hosts map update on reload.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/parse_sun.c
++++ autofs-5.0.7/modules/parse_sun.c
+@@ -1356,16 +1356,35 @@ int parse_mount(struct autofs_point *ap,
+ 		}
+ 
+ 		cache_multi_writelock(me);
+-		/* Someone beat us to it, return success */
+-		if (me->multi) {
+-			free(options);
+-			cache_multi_unlock(me);
+-			cache_unlock(mc);
+-			pthread_setcancelstate(cur_state, NULL);
+-			return 0;
+-		}
+ 		/* So we know we're the multi-mount root */
+-		me->multi = me;
++		if (!me->multi)
++			me->multi = me;
++		else {
++			/*
++			 * The amd host mount type assumes the lookup name
++			 * is the host name for the host mount but amd uses
++			 * ${rhost} for this.
++			 *
++			 * This introduces the possibility of multiple
++			 * concurrent mount requests since constructing a
++			 * mount tree that isn't under the lookup name can't
++			 * take advantage of the kernel queuing of other
++			 * concurrent lookups while the mount tree is
++			 * constructed.
++			 *
++			 * Consequently multi-mount updates (currently only
++			 * done for the internal hosts map which the amd
++			 * parser also uses for its hosts map) can't be
++			 * allowed for amd mounts.
++			 */
++			if (source->flags & MAP_FLAG_FORMAT_AMD) {
++				free(options);
++				cache_multi_unlock(me);
++				cache_unlock(mc);
++				pthread_setcancelstate(cur_state, NULL);
++				return 0;
++			}
++		}
+ 
+ 		age = me->age;
+ 

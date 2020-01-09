@@ -1,0 +1,35 @@
+autofs-5.0.7 - add after sssd dependency to unit file
+
+From: Ian Kent <ikent@redhat.com>
+
+When using sss as a map source autofs can sometimes start before
+sssd is ready.
+---
+ CHANGELOG                 |    1 +
+ samples/autofs.service.in |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/CHANGELOG b/CHANGELOG
+index 7749f01..2734fe3 100644
+--- a/CHANGELOG
++++ b/CHANGELOG
+@@ -55,6 +55,7 @@
+ - fix add null check in parse_server_string().
+ - don't override LDFLAGS in make rules.
+ - fix a couple of compiler warnings.
++- add after sssd dependency to unit file.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+diff --git a/samples/autofs.service.in b/samples/autofs.service.in
+index 056ab5e..777463d 100644
+--- a/samples/autofs.service.in
++++ b/samples/autofs.service.in
+@@ -1,6 +1,6 @@
+ [Unit]
+ Description=Automounts filesystems on demand
+-After=network.target ypbind.service
++After=network.target ypbind.service sssd.service
+ 
+ [Service]
+ Type=forking

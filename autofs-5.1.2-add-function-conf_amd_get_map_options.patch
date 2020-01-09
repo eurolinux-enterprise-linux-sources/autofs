@@ -1,0 +1,64 @@
+autofs-5.1.2 - add function conf_amd_get_map_options()
+
+From: Ian Kent <raven@themaw.net>
+
+Add configuration function to get the map_options option from
+an amd mount configuration section.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ include/defaults.h |    1 +
+ lib/defaults.c     |   14 ++++++++++++++
+ 3 files changed, 16 insertions(+)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -229,6 +229,7 @@
+ - add function conf_amd_get_mount_paths().
+ - include amd mount sections mounts in master mounts list.
+ - check for conflicting amd section mounts.
++- add function conf_get_map_options().
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/include/defaults.h
++++ autofs-5.0.7/include/defaults.h
+@@ -193,6 +193,7 @@ char *conf_amd_get_nis_domain(void);
+ unsigned int conf_amd_set_nis_domain(const char *);
+ char *conf_amd_get_map_defaults(const char *);
+ char *conf_amd_get_map_name(const char *);
++char *conf_amd_get_map_options(const char *);
+ char *conf_amd_get_map_type(const char *);
+ char *conf_amd_get_search_path(const char *);
+ unsigned int conf_amd_get_dismount_interval(const char *);
+--- autofs-5.0.7.orig/lib/defaults.c
++++ autofs-5.0.7/lib/defaults.c
+@@ -493,6 +493,11 @@ static int conf_load_amd_defaults(void)
+ 	if (ret == CFG_FAIL)
+ 		goto error;
+ 
++	ret = conf_update(sec, NAME_AMD_MAP_OPTIONS,
++			  DEFAULT_AMD_MAP_OPTIONS, CONF_NONE);
++	if (ret == CFG_FAIL)
++		goto error;
++
+ 	ret = conf_update(sec, NAME_AMD_MAP_TYPE,
+ 			  DEFAULT_AMD_MAP_TYPE, CONF_NONE);
+ 	if (ret == CFG_FAIL)
+@@ -2004,6 +2009,15 @@ char *conf_amd_get_map_name(const char *
+ 
+ 	return tmp;
+ }
++
++char *conf_amd_get_map_options(const char *section)
++{
++	char *tmp = NULL;
++	if (section)
++		tmp = conf_get_string(section, NAME_AMD_MAP_OPTIONS);
++
++	return tmp;
++}
+ 
+ char *conf_amd_get_map_type(const char *section)
+ {

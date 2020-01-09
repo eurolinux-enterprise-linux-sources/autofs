@@ -1,0 +1,65 @@
+autofs-5.1.1 - fix out of order call in program map lookup
+
+From: Ian Kent <raven@themaw.net>
+
+Commit 91e42e58b4 fixed a problem with program map environment variable
+naming and commit 743deb0e4e added a configuration option to force use
+of the old environment names for those who need it and are sure it is
+safe to continue to use them.
+
+But the call to get the configuration entry was placed after a fork()
+so the state of the mutex used when querying the configuration is
+undefined and can lead to a deadlock.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG                |    1 +
+ modules/lookup_program.c |   20 ++++++++++----------
+ 2 files changed, 11 insertions(+), 10 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -181,6 +181,7 @@
+ - fix direct mount stale instance flag reset.
+ - fix direct map expire not set for initail empty map.
+ - update map_hash_table_size description.
++- fix out of order call in program map lookup.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/lookup_program.c
++++ autofs-5.0.7/modules/lookup_program.c
+@@ -139,6 +139,16 @@ static char *lookup_one(struct autofs_po
+ 	}
+ 
+ 	/*
++	 * By default use a prefix with standard environment
++	 * variables to prevent system subversion by interpreted
++	 * languages.
++	 */
++	if (defaults_force_std_prog_map_env())
++		prefix = NULL;
++	else
++		prefix = "AUTOFS_";
++
++	/*
+ 	 * We don't use popen because we don't want to run /bin/sh plus we
+ 	 * want to send stderr to the syslog, and we don't use spawnl()
+ 	 * because we need the pipe hooks
+@@ -177,16 +187,6 @@ static char *lookup_one(struct autofs_po
+ 			     ap->path, ctxt->mapname);
+ 
+ 		/*
+-		 * By default use a prefix with standard environment
+-		 * variables to prevent system subversion by interpreted
+-		 * languages.
+-		 */
+-		if (defaults_force_std_prog_map_env())
+-			prefix = NULL;
+-		else
+-			prefix = "AUTOFS_";
+-
+-		/*
+ 		 * MAPFMT_DEFAULT must be "sun" for ->parse_init() to have setup
+ 		 * the macro table.
+ 		 */

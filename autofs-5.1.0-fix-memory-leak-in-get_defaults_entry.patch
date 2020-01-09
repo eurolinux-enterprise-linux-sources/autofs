@@ -1,0 +1,35 @@
+autofs-5.1.0 - fix memory leak in get_defaults_entry()
+
+From: Ian Kent <ikent@redhat.com>
+
+In get_defaults_entry(), if parsing of the expanded defaults string fails
+the expanded string used for the parse is not freed.
+---
+ CHANGELOG           |    1 +
+ modules/parse_amd.c |    4 +++-
+ 2 files changed, 4 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -150,6 +150,7 @@
+ - fix hosts map options check in lookup_amd_instance().
+ - fix memory leak in create_client().
+ - fix memory leak in get_exports().
++- fix memory leak in get_defaults_entry().
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/parse_amd.c
++++ autofs-5.0.7/modules/parse_amd.c
+@@ -1797,8 +1797,10 @@ static struct amd_entry *get_defaults_en
+ 		char *expand;
+ 		if (!expand_selectors(ap, defaults, &expand, sv))
+ 			goto out;
+-		if (amd_parse_list(ap, expand, &dflts, &sv))
++		if (amd_parse_list(ap, expand, &dflts, &sv)) {
++			free(expand);
+ 			goto out;
++		}
+ 		entry = select_default_entry(ap, &dflts, sv);
+ 		if (!entry->map_type) {
+ 			/*

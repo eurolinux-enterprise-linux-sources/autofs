@@ -1,0 +1,45 @@
+autofs-5.1.0 - fix config entry read buffer not checked
+
+From: Ian Kent <raven@themaw.net>
+
+Check the length of config file line read in and report truncation
+if it was too long.
+---
+ CHANGELOG      |    1 +
+ lib/defaults.c |    8 +++++++-
+ 2 files changed, 8 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -131,6 +131,7 @@
+ - fix incorrect round robin host detection.
+ - fix race accessing qdn in get_query_dn().
+ - fix leak in cache_push_mapent().
++- fix config entry read buffer not checked.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/lib/defaults.c
++++ autofs-5.0.7/lib/defaults.c
+@@ -834,7 +834,7 @@ static int parse_line(char *line, char *
+ 
+ static int read_config(unsigned int to_syslog, FILE *f, const char *name)
+ {
+-	char buf[MAX_LINE_LEN];
++	char buf[MAX_LINE_LEN + 2];
+ 	char secbuf[MAX_SECTION_NAME];
+ 	char *new_sec;
+ 	char *res;
+@@ -842,6 +842,12 @@ static int read_config(unsigned int to_s
+ 	new_sec = NULL;
+ 	while ((res = fgets(buf, MAX_LINE_LEN, f))) {
+ 		char *sec, *key, *value;
++
++		if (strlen(res) > MAX_LINE_LEN) {
++			message(to_syslog, "%s was truncated, ignored", res);
++			continue;
++		}
++
+ 		sec = key = value = NULL;
+ 		if (!parse_line(res, &sec, &key, &value))
+ 			continue;

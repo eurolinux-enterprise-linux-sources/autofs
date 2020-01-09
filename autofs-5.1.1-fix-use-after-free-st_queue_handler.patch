@@ -1,0 +1,37 @@
+autofs-5.1.1 - fix use-after-free in st_queue_handler()
+
+From: Frank Sorenson <sorenson@redhat.com>
+
+The task may be referenced after being freed.  Move the
+free to after the list_del_init.
+
+Signed-off-by: Frank Sorenson <sorenson@redhat.com>
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG      |    1 +
+ daemon/state.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -204,6 +204,7 @@
+ - fix use after free in open_lookup().
+ - fix typo in autofs_sasl_bind().
+ - add configuration option to use fqdn in mounts.
++- fix use-after-free in st_queue_handler().
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/state.c
++++ autofs-5.0.7/daemon/state.c
+@@ -1179,9 +1179,9 @@ remove:
+ 							struct state_queue, pending);
+ 
+ 				list_del(&task->list);
++				list_del_init(&next->pending);
+ 				free(task);
+ 
+-				list_del_init(&next->pending);
+ 				list_add_tail(&next->list, head);
+ 				if (p == head)
+ 					p = head->next;

@@ -1,0 +1,42 @@
+autofs-5.0.8 - fix max() declaration
+
+From: Ian Kent <raven@themaw.net>
+
+Use a name other than the already defined max().
+---
+ CHANGELOG            |    1 +
+ modules/replicated.c |    6 +++---
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -75,6 +75,7 @@
+ - check for non existent negative entries in lookup_ghost().
+ - fix options compare.
+ - fix fix options compare.
++- fix max() declaration.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/replicated.c
++++ autofs-5.0.7/modules/replicated.c
+@@ -73,8 +73,8 @@ static int volatile ifc_last_len = 0;
+ /* Get numeric value of the n bits starting at position p */
+ #define getbits(x, p, n)	((x >> (p + 1 - n)) & ~(~0 << n))
+ 
+-#define max(x, y)	(x >= y ? x : y)
+-#define mmax(x, y, z)	(max(x, y) == x ? max(x, z) : max(y, z))
++#define mymax(x, y)	(x >= y ? x : y)
++#define mmax(x, y, z)	(mymax(x, y) == x ? mymax(x, z) : mymax(y, z))
+ 
+ unsigned int ipv6_mask_cmp(uint32_t *host, uint32_t *iface, uint32_t *mask)
+ {
+@@ -961,7 +961,7 @@ int prune_host_list(unsigned logopt, str
+ 
+ 	max_tcp_count = mmax(v4_tcp_count, v3_tcp_count, v2_tcp_count);
+ 	max_udp_count = mmax(v4_udp_count, v3_udp_count, v2_udp_count);
+-	max_count = max(max_tcp_count, max_udp_count);
++	max_count = mymax(max_tcp_count, max_udp_count);
+ 
+ 	if (max_count == v4_tcp_count) {
+ 		selected_version = NFS4_TCP_SUPPORTED;
