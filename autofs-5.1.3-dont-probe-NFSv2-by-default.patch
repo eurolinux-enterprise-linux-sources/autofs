@@ -1,0 +1,35 @@
+autofs-5.1.3 - dont probe NFSv2 by default
+
+From: Ian Kent <raven@themaw.net>
+
+NFS v2 hasn't been recommended for use for a long time now so don't
+include it in the avialability probe unless it is specified as an
+NFS mount option.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG            |    1 +
+ include/replicated.h |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.0.5.orig/CHANGELOG
++++ autofs-5.0.5/CHANGELOG
+@@ -309,6 +309,7 @@
+ - only take master map mutex for master map update.
+ - remove some redundant rpc library code.
+ - add port parameter to rpc_ping().
++- dont probe NFSv2 by default.
+ 
+ 03/09/2009 autofs-5.0.5
+ -----------------------
+--- autofs-5.0.5.orig/include/replicated.h
++++ autofs-5.0.5/include/replicated.h
+@@ -26,7 +26,7 @@
+ #define NFS2_SUPPORTED		0x0010
+ #define NFS3_SUPPORTED		0x0020
+ #define NFS4_SUPPORTED		0x0040
+-#define NFS_VERS_MASK		(NFS2_SUPPORTED|NFS3_SUPPORTED)
++#define NFS_VERS_MASK		(NFS3_SUPPORTED)
+ #define NFS4_VERS_MASK		(NFS4_SUPPORTED)
+ 
+ #define NFS2_REQUESTED		NFS2_SUPPORTED

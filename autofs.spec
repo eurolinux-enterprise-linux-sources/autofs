@@ -4,7 +4,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.0.5
-Release: 133%{?dist}
+Release: 139%{?dist}
 Epoch: 1
 License: GPLv2+
 Group: System Environment/Daemons
@@ -472,6 +472,15 @@ Patch762: autofs-5.1.2-make-set_direct_mount_catatonic-more-general.patch
 Patch763: autofs-5.1.2-set-autofs-mounts-catatonic-at-exit.patch
 
 Patch764: autofs-5.1.3-only-take-master-map-mutex-for-master-map-update.patch
+
+Patch765: autofs-5.1.3-remove-some-redundant-rpc-library-code.patch
+Patch766: autofs-5.1.3-add-port-parameter-to-rpc_ping.patch
+Patch767: autofs-5.1.3-dont-probe-NFSv2-by-default.patch
+Patch768: autofs-5.1.3-add-version-parameter-to-rpc_ping.patch
+Patch769: autofs-5.1.1-fix-create_client-RPC-client-handling.patch
+
+Patch770: autofs-5.1.4-fix-NFS-version-mask-usage.patch
+Patch771: autofs-5.1.4-fix-fd-leak-in-rpc_do_create_client.patch
 
 Buildroot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: autoconf, hesiod-devel, openldap-devel, bison, flex, libxml2-devel, cyrus-sasl-devel, openssl-devel module-init-tools util-linux nfs-utils e2fsprogs libtirpc-devel, libsss_autofs >= 1.8.0-5
@@ -958,6 +967,15 @@ echo %{version}-%{release} > .version
 
 %patch764 -p1
 
+%patch765 -p1
+%patch766 -p1
+%patch767 -p1
+%patch768 -p1
+%patch769 -p1
+
+%patch770 -p1
+%patch771 -p1
+
 %build
 #CFLAGS="$RPM_OPT_FLAGS" ./configure --prefix=/usr --libdir=%{_libdir}
 %configure --disable-mount-locking --enable-ignore-busy --with-libtirpc
@@ -1015,11 +1033,46 @@ fi
 /misc
 
 %changelog
-* Mon Oct 16 2017 Ian Kent <ikent@redhat.com> - 5.0.5-133.el6_9
-- bz1501922 - Autofs processes hung while waiting for the release of an
+* Thu May 17 2018 Ian Kent <ikent@redhat.com> - 5.0.5-139
+- bz1495442 - automount crashes due to segfault
+  - fix fd leak in rpc_do_create_client().
+- Related: rhbz#1495442
+
+* Fri Apr 20 2018 Ian Kent <ikent@redhat.com> - 5.0.5-138
+- bz1559295 - autofs: can't mount nfs vers=2
+  - fix NFS version mask usage.
+- Resolves: rhbz#1559295
+
+* Mon Feb 26 2018 Ian Kent <ikent@redhat.com> - 5.0.5-137
+- bz1463004 - Server availability probe broke tunneling nfs via localhost
+  - update "add version parameter to rpc_ping()" patch to current updtream
+    version which fixes 2 covarity warnings.
+- Resolves: rhbz#1463004
+
+* Fri Feb 23 2018 Ian Kent <ikent@redhat.com> - 5.0.5-136
+- bz1495442 - automount crashes due to segfault
+  - fix create_client() RPC client handling
+- Resolves: rhbz#1495442
+
+* Mon Feb 05 2018 Ian Kent <ikent@redhat.com> - 5.0.5-135
+- bz1463004 - Server availability probe broke tunneling nfs via localhost
+  - remove some redundant rpc library code.
+  - add port parameter to rpc_ping().
+  - dont probe NFSv2 by default.
+  - add version parameter to rpc_ping().
+- Resolves: rhbz#1463004
+
+* Fri Oct 13 2017 Ian Kent <ikent@redhat.com> - 5.0.5-134
+- bz1496901 - Autofs processes hung while waiting for the release of an
+  entry master_lock that is held by another thread waiting on a bind mount
+  - fix incorrect patch specification in spec file.
+- Related: rhbz#1496901
+
+* Fri Oct 13 2017 Ian Kent <ikent@redhat.com> - 5.0.5-133
+- bz1496901 - Autofs processes hung while waiting for the release of an
   entry master_lock that is held by another thread waiting on a bind mount
   - only take master map mutex for master map update.
--Resolves: rhbz#1501922
+- Resolves: rhbz#1496901
 
 * Tue Jan 31 2017 Ian Kent <ikent@redhat.com> - 5.0.5-132
 - bz1277033 - RHEL6.7: shutdown / reboot hangs with findmnt in a readlink
