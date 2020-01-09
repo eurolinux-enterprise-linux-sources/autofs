@@ -4,7 +4,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.0.5
-Release: 139%{?dist}
+Release: 140%{?dist}.1
 Epoch: 1
 License: GPLv2+
 Group: System Environment/Daemons
@@ -481,6 +481,10 @@ Patch769: autofs-5.1.1-fix-create_client-RPC-client-handling.patch
 
 Patch770: autofs-5.1.4-fix-NFS-version-mask-usage.patch
 Patch771: autofs-5.1.4-fix-fd-leak-in-rpc_do_create_client.patch
+
+Patch772: autofs-5.1.4-fix-incorrect-locking-in-sss-lookup.patch
+
+Patch773: autofs-5.1.5-nss-workaround.patch
 
 Buildroot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: autoconf, hesiod-devel, openldap-devel, bison, flex, libxml2-devel, cyrus-sasl-devel, openssl-devel module-init-tools util-linux nfs-utils e2fsprogs libtirpc-devel, libsss_autofs >= 1.8.0-5
@@ -976,6 +980,10 @@ echo %{version}-%{release} > .version
 %patch770 -p1
 %patch771 -p1
 
+%patch772 -p1
+
+%patch773 -p1
+
 %build
 #CFLAGS="$RPM_OPT_FLAGS" ./configure --prefix=/usr --libdir=%{_libdir}
 %configure --disable-mount-locking --enable-ignore-busy --with-libtirpc
@@ -1033,6 +1041,17 @@ fi
 /misc
 
 %changelog
+* Wed Mar 13 2019 Ian Kent <ikent@redhat.com> - 5.0.5-140.el_6_10.1
+- bz1197622 - automount segfaults in error code path (reproducible
+  PRErrorTableList corruption)
+  - nss workaround.
+- Resolves: rhbz#1197622
+
+* Thu Oct 04 2018 Ian Kent <ikent@redhat.com> - 5.0.5-140
+- bz1627004 - yum update hanging while restarting autofs
+  - fix incorrect locking in sss lookup.
+-Resolves: rhbz#1627004
+
 * Thu May 17 2018 Ian Kent <ikent@redhat.com> - 5.0.5-139
 - bz1495442 - automount crashes due to segfault
   - fix fd leak in rpc_do_create_client().
