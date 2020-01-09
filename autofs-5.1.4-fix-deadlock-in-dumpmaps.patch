@@ -1,0 +1,36 @@
+autofs-5.1.4 - fix deadlock in dumpmaps
+
+From: Ian Kent <raven@themaw.net>
+
+Commit a223d11fa8e (autofs-5.1.3 - serialize calls to open_xxxx()
+functions) introduces a deadlock when using the dumpmaps function.
+
+In this case the open fd mutex needs to be unlocked in the forked
+child process of the do_spawn() function.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG      |    1 +
+ daemon/spawn.c |    1 +
+ 2 files changed, 2 insertions(+)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -290,6 +290,7 @@
+ - move open_xxxx() functions to spawn.c.
+ - serialize calls to open_xxxx() functions.
+ - fix use after free in do_master_list_reset().
++- fix deadlock in dumpmaps.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/spawn.c
++++ autofs-5.0.7/daemon/spawn.c
+@@ -337,6 +337,7 @@ static int do_spawn(unsigned logopt, uns
+ 		dup2(pipefd[1], STDOUT_FILENO);
+ 		dup2(pipefd[1], STDERR_FILENO);
+ 		close(pipefd[1]);
++		open_mutex_unlock();
+ 
+ 		/* what to mount must always be second last */
+ 		while (*pargv++)

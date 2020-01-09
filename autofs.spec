@@ -8,7 +8,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.0.7
-Release: 70%{?dist}
+Release: 83%{?dist}
 Epoch: 1
 License: GPLv2+
 Group: System Environment/Daemons
@@ -406,9 +406,55 @@ Patch790: autofs-5.1.2-limit-getgrgid_r-buffer-size.patch
 Patch791: autofs-5.1.2-add-congigure-option-for-limiting-getgrgid_r-stack-usage.patch
 Patch792: autofs-5.1.3-fix-unset-tsd-group-name-handling.patch
 
-Patch793: autofs-5.1.3-revert-fix-argc-off-by-one-in-mount_autofs_c.patch
-Patch794: autofs-5.1.3-allow-dot-in-OPTIONSTR-value-lexer-pattern.patch
-Patch795: autofs-5.1.3-handle-additional-nfs-versions-in-mount_nfs_c.patch
+Patch793: autofs-5.1.3-set-systemd-KillMode-to-process.patch
+Patch794: autofs-5.1.3-fix-mount_nfs-blocks-on-first-mount.patch
+Patch795: autofs-5.1.3-fix-a-couple-of-typos-in-autofs-man-pages.patch
+Patch796: autofs-5.1.3-fix-some-man-problems.patch
+Patch797: autofs-5.1.3-allow-dot-in-OPTIONSTR-value-lexer-pattern.patch
+Patch798: autofs-5.1.3-revert-fix-argc-off-by-one-in-mount_autofs_c.patch
+Patch799: autofs-5.1.3-only-take-master-map-mutex-for-master-map-update.patch
+Patch800: autofs-5.1.3-fix-nisplus-lookup-init-not-configured-check.patch
+Patch801: autofs-5.1.3-make-open_lookup-error-handling-more-consistent.patch
+Patch802: autofs-5.1.3-be-silent-about-sss-library-not-found.patch
+Patch803: autofs-5.1.3-be-silent-about-nis-domain-not-set.patch
+Patch804: autofs-5.1.3-make-map-source-reference-message-debug-only.patch
+Patch805: autofs-5.1.3-handle-additional-nfs-versions-in-mount_nfs_c.patch
+Patch806: autofs-5.1.3-improve-description-of-mount_nfs_default_protocol.patch
+Patch807: autofs-5.1.3-reset-master-map-list-on-startup-retry.patch
+
+# Bug 1509043
+Patch810: autofs-5.1.3-improve-debug-logging-of-lookup-key.patch
+Patch811: autofs-5.1.2-fix-cachefs-parse-message-not-being-logged.patch
+Patch812: autofs-5.1.3-fix-typo-in-amd_parse_c.patch
+Patch813: autofs-5.1.3-add-missing-MODPREFIX-to-logging-in-amd-parser.patch
+Patch814: autofs-5.1.3-fix-symlink-false-negative-in-umount_multi.patch
+Patch815: autofs-5.1.3-remove-expand_selectors-call-on-amd-parser-entry.patch
+Patch816: autofs-5.1.3-fix-amd-defaults-map-entry-handling.patch
+Patch817: autofs-5.1.3-refactor-amd_parse_c.patch
+Patch818: autofs-5.1.3-fix-amd-parser-double-quote-handling.patch
+Patch819: autofs-5.1.3-fix-expandamdent-quote-handling.patch
+Patch820: autofs-5.1.3-fix-possible-memory-leak-during-amd-parse.patch
+Patch821: autofs-5.1.3-remove-path-restriction-of-amd-external-mount.patch
+Patch822: autofs-5.1.3-add-function-umount_amd_ext_mount.patch
+Patch823: autofs-5.1.3-add-function-ext_mount_inuse.patch
+Patch824: autofs-5.1.3-add-function-construct_argv.patch
+Patch825: autofs-5.1.3-add-amd-mount-type-program-mount-support.patch
+Patch826: autofs-5.1.3-fix-memory-leak-in-umount_amd_ext_mount.patch
+Patch827: autofs-5.1.3-fix-strerror_r-parameter-declaration-in-do_program_mount.patch
+Patch828: autofs-5.1.3-fix-incorrect-check-in-validate_program_options.patch
+
+Patch829: autofs-5.1.3-update-configure-to-check-for-pipe2.patch
+Patch830: autofs-5.1.3-fix-open-calls-not-using-open_xxxx-calls.patch
+Patch831: autofs-5.1.3-move-open_xxxx-functions-to-spawn_c.patch
+Patch832: autofs-5.1.3-serialize-calls-to-open_xxxx-functions.patch
+
+Patch833: autofs-5.1.4-fix-use-after-free-in-do_master_list_reset.patch
+Patch834: autofs-5.1.4-fix-deadlock-in-dumpmaps.patch
+
+Patch835: autofs-5.1.4-dont-use-array-for-path-when-not-neccessary.patch
+Patch836: autofs-5.1.4-fix-prefix-option-handling-in-expand_entry.patch
+Patch837: autofs-5.1.4-fix-sublink-option-not-set-from-defaults.patch
+Patch838: autofs-5.1.4-fix-error-return-in-do_nfs_mount.patch
 
 Buildroot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 %if %{with_systemd}
@@ -856,6 +902,52 @@ echo %{version}-%{release} > .version
 %patch793 -p1
 %patch794 -p1
 %patch795 -p1
+%patch796 -p1
+%patch797 -p1
+%patch798 -p1
+%patch799 -p1
+%patch800 -p1
+%patch801 -p1
+%patch802 -p1
+%patch803 -p1
+%patch804 -p1
+%patch805 -p1
+%patch806 -p1
+%patch807 -p1
+
+# Bug 1509043
+%patch810 -p1
+%patch811 -p1
+%patch812 -p1
+%patch813 -p1
+%patch814 -p1
+%patch815 -p1
+%patch816 -p1
+%patch817 -p1
+%patch818 -p1
+%patch819 -p1
+%patch820 -p1
+%patch821 -p1
+%patch822 -p1
+%patch823 -p1
+%patch824 -p1
+%patch825 -p1
+%patch826 -p1
+%patch827 -p1
+%patch828 -p1
+
+%patch829 -p1
+%patch830 -p1
+%patch831 -p1
+%patch832 -p1
+
+%patch833 -p1
+%patch834 -p1
+
+%patch835 -p1
+%patch836 -p1
+%patch837 -p1
+%patch838 -p1
 
 %build
 LDFLAGS=-Wl,-z,now
@@ -953,15 +1045,116 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
-* Thu Oct 19 2017 Ian Kent <ikent@redhat.com> - 5.0.7-70.el7_4
-- bz1503945 - autofs option parsing for maps with fstype=autofs no longer
-  works [rhel-7.4.z]
-  - revert fix argc off by one in mount_autofs.c.
-- bz1503946 - autofs map entry options field does not accept dot character
-  [rhel-7.4.z]
-  - allow dot in OPTIONSTR value lexer pattern.
+* Fri Feb 02 2018 Ian Kent <ikent@redhat.com> - 5.0.7-83
+- bz1509043 - [RFE] "automount / amd: file system type program is not
+  yet implemented"
+  - dont use array for path when not necessary.
+  - fix prefix option handling in expand_entry().
+  - fix sublink handling in do_nfs_mount().
+  - add fix error return in do_nfs_mount().
+- Related: rhbz#1509043
+
+* Fri Dec 22 2017 Ian Kent <ikent@redhat.com> - 5.0.7-82
+- bz1527815 - automount[1979]: segfault at 55f5101d30e8 ip 000055f50f177668
+              sp 00007ffffa85fdd0 error 4 in automount[55f50f16d000+48000]
+  - fix deadlock in dumpmaps.
+- Related: rhbz#1527815
+
+* Thu Dec 21 2017 Ian Kent <ikent@redhat.com> - 5.0.7-81
+- bz1527815 - automount[1979]: segfault at 55f5101d30e8 ip 000055f50f177668
+              sp 00007ffffa85fdd0 error 4 in automount[55f50f16d000+48000]
+  - fix use after free in do_master_list_reset()
+- Resolves: rhbz#1527815
+
+* Mon Dec 18 2017 Ian Kent <ikent@redhat.com> - 5.0.7-80
+- bz1509088 - autofs hangs due to race condition in do_spawn
+  - update configure to check for pipe2(2).
+  - fix open calls not using open_xxxx() calls.
+  - move open_xxxx() functions to spawn.c.
+  - serialize calls to open_xxxx() functions.
+- Resolves: rhbz#1509088
+
+* Mon Dec 11 2017 Ian Kent <ikent@redhat.com> - 5.0.7-79
+- bz1509043 - [RFE] "automount / amd: file system type program is not
+  yet implemented"
+  - fix memory leak in umount_amd_ext_mount().
+  - fix strerror_r() parameter declaration in do program_mount().
+  - fix incorrect check in validate_program_options().
+- Related: rhbz#1509043
+
+* Mon Dec 11 2017 Ian Kent <ikent@redhat.com> - 5.0.7-78
+- bz1509043 - [RFE] "automount / amd: file system type program is not
+  yet implemented"
+  - improve debug logging of lookup key.
+  - fix cachefs parse message not being logged.
+  - fix typo in amd_parse.c.
+  - add missing MODPREFIX to logging in amd parser.
+  - fix symlink false negative in umount_multi().
+  - remove expand_selectors() call on amd parser entry.
+  - fix amd defaults map entry handling.
+  - refactor amd_parse.c.
+  - fix amd parser double quote handling.
+  - fix expandamdent() quote handling.
+  - fix possible memory leak during amd parse.
+  - remove path restriction of amd external mount.
+  - add function umount_amd_ext_mount().
+  - add function ext_mount_inuse().
+  - add function construct_argv().
+  - add amd mount type program mount support.
+- Resolves: rhbz#1509043
+
+* Tue Oct 31 2017 Ian Kent <ikent@redhat.com> - 5.0.7-77
+- bz1504145 - Automount cannot access host shares after a reboot
+  - fix reject in patch changelog hunk.
+- Related: rhbz#1504145
+
+* Tue Oct 31 2017 Ian Kent <ikent@redhat.com> - 5.0.7-76
+- bz1504145 - Automount cannot access host shares after a reboot
+  - reset master map list on startup retry.
+- Resolves: rhbz#1504145
+
+* Fri Oct 27 2017 Ian Kent <ikent@redhat.com> - 5.0.7-75
+- bz1489247 - autofs: config mount_nfs_default_protocol doesn't work
+  - improve description of mount_nfs_default_protocol.
+- Resolves: rhbz#1489247
+
+* Thu Oct 19 2017 Ian Kent <ikent@redhat.com> - 5.0.7-74
+- bz1486035 - autofs map entry options field does not accept dot character
   - handle additional nfs versions in mount_nfs.c.
-- Resolves: rhbz#1503945 rhbz#1503946
+- Related: rhbz#1486035
+
+* Wed Oct 11 2017 Ian Kent <ikent@redhat.com> - 5.0.7-73
+- bz1489648 - autofs missing dependency with libsss_autofs cause missing file
+  messages during boot
+  - fix nisplus lookup init not configured check.
+  - make open_lookup() error handling more consistent.
+  - be silent about sss library not found.
+  - be silent about nis domain not set.
+  - make map source reference message debug only.
+- Resolves: rhbz#1489648
+
+* Mon Oct 9 2017 Ian Kent <ikent@redhat.com> - 5.0.7-72
+- bz1499287 - Autofs processes hung while waiting for the release of an entry
+  master_lock that is held by another thread waiting on a bind mount
+  - only take master map mutex for master map update.
+- Resolves: rhbz#1499287
+
+* Thu Oct 5 2017 Ian Kent <ikent@redhat.com> - 5.0.7-71
+- bz1497846 - Macro definitions specified in mount entries are no longer getting set
+  - revert fix argc off by one in mount_autofs.c.
+- Resolves: rhbz#1497846
+
+* Mon Oct 2 2017 Ian Kent <ikent@redhat.com> - 5.0.7-70
+- bz1442926 - Systemd kills autofs fuse mount on service restart
+  - set systemd KillMode to process.
+- bz1466256 - autofs: unable to mount nfs share after reboot
+  - fix mount.nfs blocks on first mount.
+- bz1476850 - Man page: Make auto.master 's summary findable via 'man -k autofs'
+  - fix typos in autofs man pages.
+  - fix some man page problems.
+- bz1486035 - autofs map entry options field does not accept dot character
+  - allow dot in OPTIONSTR value lexer pattern.
+-Resolves: rhbz#1442926 rhbz#1466256 rhbz#1476850 rhbz#1486035
 
 * Fri Jun 2 2017 Ian Kent <ikent@redhat.com> - 5.0.7-69
 - bz1435736 - autofs fails with kernel: automount[3386]:

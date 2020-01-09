@@ -1,0 +1,59 @@
+autofs-5.1.3 - add function ext_mount_inuse()
+
+From: Ian Kent <raven@themaw.net>
+
+Add function to check if a path is an amd externally managed mount.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG        |    1 +
+ include/mounts.h |    1 +
+ lib/mounts.c     |   17 +++++++++++++++++
+ 3 files changed, 19 insertions(+)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -279,6 +279,7 @@
+ - fix possible memory leak during amd parse.
+ - remove path restriction of amd external mount.
+ - add function umount_amd_ext_mount().
++- add function ext_mount_inuse().
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/include/mounts.h
++++ autofs-5.0.7/include/mounts.h
+@@ -98,6 +98,7 @@ char *make_options_string(char *path, in
+ char *make_mnt_name_string(char *path);
+ int ext_mount_add(struct list_head *, const char *, unsigned int);
+ int ext_mount_remove(struct list_head *, const char *);
++int ext_mount_inuse(const char *);
+ struct mnt_list *get_mnt_list(const char *table, const char *path, int include);
+ struct mnt_list *reverse_mnt_list(struct mnt_list *list);
+ void free_mnt_list(struct mnt_list *list);
+--- autofs-5.0.7.orig/lib/mounts.c
++++ autofs-5.0.7/lib/mounts.c
+@@ -768,6 +768,23 @@ done:
+ 	return ret;
+ }
+ 
++int ext_mount_inuse(const char *path)
++{
++	struct ext_mount *em;
++	int ret = 0;
++
++	pthread_mutex_lock(&ext_mount_hash_mutex);
++	em = ext_mount_lookup(path);
++	if (!em)
++		goto done;
++
++	if (!list_empty(&em->mounts))
++		ret = 1;
++done:
++	pthread_mutex_unlock(&ext_mount_hash_mutex);
++	return ret;
++}
++
+ /*
+  * Get list of mounts under path in longest->shortest order
+  */

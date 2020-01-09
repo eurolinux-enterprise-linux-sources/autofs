@@ -1,0 +1,40 @@
+autofs-5.1.3 - be silent about sss library not found
+
+From: Ian Kent <raven@themaw.net>
+
+When sss is set as an nsswitch source but the sss autofs shared library
+isn't found then sssd is probably not installed so it's essentially an
+unconfigured source.
+
+So be silent about the library not being found.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG            |    1 +
+ modules/lookup_sss.c |    4 +---
+ 2 files changed, 2 insertions(+), 3 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -260,6 +260,7 @@
+ - only take master map mutex for master map update.
+ - fix nisplus lookup init not configured check.
+ - make open_lookup() error handling more consistent.
++- be silent about sss library not found.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/lookup_sss.c
++++ autofs-5.0.7/modules/lookup_sss.c
+@@ -74,10 +74,8 @@ static int open_sss_lib(struct lookup_co
+ 	}
+ 
+ 	dh = dlopen(dlbuf, RTLD_LAZY);
+-	if (!dh) {
+-		logerr(MODPREFIX "failed to open %s: %s", dlbuf, dlerror());
++	if (!dh)
+ 		return 1;
+-	}
+ 	ctxt->dlhandle = dh;
+ 
+ 	ctxt->setautomntent = (setautomntent_t) dlsym(dh, "_sss_setautomntent");

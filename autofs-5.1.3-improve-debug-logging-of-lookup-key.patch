@@ -1,0 +1,210 @@
+autofs-5.1.3 - improve debug logging of lookup key
+
+From: Ian Kent <raven@themaw.net>
+
+When looking up an amd format map key, if there is a prefix it
+will be used in matching the map key.
+
+So print the actual matched key string in debug log output.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG                |    1 +
+ modules/lookup_file.c    |   14 ++++++++++----
+ modules/lookup_hesiod.c  |   20 +++++++++++++++++---
+ modules/lookup_ldap.c    |   15 ++++++++++++---
+ modules/lookup_nisplus.c |   15 ++++++++++++---
+ modules/lookup_yp.c      |   43 +++++++++++++++++++++++++------------------
+ 6 files changed, 77 insertions(+), 31 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -266,6 +266,7 @@
+ - handle additional nfs versions in mount_nfs.c.
+ - improve description of mount_nfs_default_protocol.
+ - reset master map list on startup retry.
++- improve debug logging of lookup key.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/modules/lookup_file.c
++++ autofs-5.0.7/modules/lookup_file.c
+@@ -1290,18 +1290,24 @@ do_cache_lookup:
+ 		}
+ 	}
+ 	cache_unlock(mc);
+-	free(lkp_key);
+ 
+-	if (!me)
++	if (!me) {
++		free(lkp_key);
+ 		return NSS_STATUS_NOTFOUND;
++	}
+ 
+-	if (!mapent)
++	if (!mapent) {
++		free(lkp_key);
+ 		return NSS_STATUS_TRYAGAIN;
++	}
++
++	debug(ap->logopt, MODPREFIX "%s -> %s", lkp_key, mapent);
++
++	free(lkp_key);
+ 
+ 	master_source_current_wait(ap->entry);
+ 	ap->entry->current = source;
+ 
+-	debug(ap->logopt, MODPREFIX "%s -> %s", key, mapent);
+ 	ret = ctxt->parse->parse_mount(ap, key, key_len,
+ 				       mapent, ctxt->parse->context);
+ 	if (ret) {
+--- autofs-5.0.7.orig/modules/lookup_hesiod.c
++++ autofs-5.0.7/modules/lookup_hesiod.c
+@@ -466,14 +466,28 @@ int lookup_mount(struct autofs_point *ap
+ 	}
+ 
+ 	me = match_cached_key(ap, MODPREFIX, source, lkp_key);
+-	free(lkp_key);
+-	if (!me)
++
++	if (!me) {
++		free(lkp_key);
+ 		return NSS_STATUS_NOTFOUND;
++	}
+ 
+-	if (!me->mapent)
++	if (!me->mapent) {
++		free(lkp_key);
+ 		return NSS_STATUS_UNAVAIL;
++	}
+ 
+ 	mapent = strdup(me->mapent);
++	if (!mapent) {
++		char *estr = strerror_r(errno, buf, MAX_ERR_BUF);
++		error(ap->logopt, "malloc: %s", estr);
++		free(lkp_key);
++		return NSS_STATUS_UNKNOWN;
++	}
++
++	debug(ap->logopt, MODPREFIX "%s -> %s", lkp_key, mapent);
++
++	free(lkp_key);
+ 
+ 	rv = ctxt->parser->parse_mount(ap, key, key_len,
+ 				       mapent, ctxt->parser->context);
+--- autofs-5.0.7.orig/modules/lookup_ldap.c
++++ autofs-5.0.7/modules/lookup_ldap.c
+@@ -3785,15 +3785,24 @@ int lookup_mount(struct autofs_point *ap
+ 		}
+ 	}
+ 	cache_unlock(mc);
+-	free(lkp_key);
+ 
+-	if (!mapent)
++	if (!me) {
++		free(lkp_key);
++		return NSS_STATUS_NOTFOUND;
++	}
++
++	if (!mapent) {
++		free(lkp_key);
+ 		return NSS_STATUS_TRYAGAIN;
++	}
++
++	debug(ap->logopt, MODPREFIX "%s -> %s", lkp_key, mapent);
++
++	free(lkp_key);
+ 
+ 	master_source_current_wait(ap->entry);
+ 	ap->entry->current = source;
+ 
+-	debug(ap->logopt, MODPREFIX "%s -> %s", key, mapent);
+ 	ret = ctxt->parse->parse_mount(ap, key, key_len,
+ 				       mapent, ctxt->parse->context);
+ 	if (ret) {
+--- autofs-5.0.7.orig/modules/lookup_nisplus.c
++++ autofs-5.0.7/modules/lookup_nisplus.c
+@@ -824,15 +824,24 @@ int lookup_mount(struct autofs_point *ap
+ 		}
+ 	}
+ 	cache_unlock(mc);
+-	free(lkp_key);
+ 
+-	if (!mapent)
++	if (!me) {
++		free(lkp_key);
++		return NSS_STATUS_NOTFOUND;
++	}
++
++	if (!mapent) {
++		free(lkp_key);
+ 		return NSS_STATUS_TRYAGAIN;
++	}
++
++	debug(ap->logopt, MODPREFIX "%s -> %s", lkp_key, mapent);
++
++	free(lkp_key);
+ 
+ 	master_source_current_wait(ap->entry);
+ 	ap->entry->current = source;
+ 
+-	debug(ap->logopt, MODPREFIX "%s -> %s", key, mapent);
+ 	ret = ctxt->parse->parse_mount(ap, key, key_len,
+ 				       mapent, ctxt->parse->context);
+ 	if (ret) {
+--- autofs-5.0.7.orig/modules/lookup_yp.c
++++ autofs-5.0.7/modules/lookup_yp.c
+@@ -928,28 +928,35 @@ int lookup_mount(struct autofs_point *ap
+ 		}
+ 	}
+ 	cache_unlock(mc);
++
++	if (!me) {
++		free(lkp_key);
++		return NSS_STATUS_NOTFOUND;
++	}
++
++	if (!mapent) {
++		free(lkp_key);
++		return NSS_STATUS_TRYAGAIN;
++	}
++
++	debug(ap->logopt, MODPREFIX "%s -> %s", lkp_key, mapent);
++
+ 	free(lkp_key);
+ 
+-	if (mapent) {
+-		master_source_current_wait(ap->entry);
+-		ap->entry->current = source;
+-
+-		debug(ap->logopt, MODPREFIX "%s -> %s", key, mapent);
+-		ret = ctxt->parse->parse_mount(ap, key, key_len,
+-					       mapent, ctxt->parse->context);
+-		if (ret) {
+-			/* Don't update negative cache when re-connecting */
+-			if (ap->flags & MOUNT_FLAG_REMOUNT)
+-				return NSS_STATUS_TRYAGAIN;
+-			cache_writelock(mc);
+-			cache_update_negative(mc, source, key, ap->negative_timeout);
+-			cache_unlock(mc);
+-			return NSS_STATUS_TRYAGAIN;
+-		}
+-	 }
++	master_source_current_wait(ap->entry);
++	ap->entry->current = source;
+ 
+-	if (ret)
++	ret = ctxt->parse->parse_mount(ap, key, key_len,
++				       mapent, ctxt->parse->context);
++	if (ret) {
++		/* Don't update negative cache when re-connecting */
++		if (ap->flags & MOUNT_FLAG_REMOUNT)
++			return NSS_STATUS_TRYAGAIN;
++		cache_writelock(mc);
++		cache_update_negative(mc, source, key, ap->negative_timeout);
++		cache_unlock(mc);
+ 		return NSS_STATUS_TRYAGAIN;
++	}
+ 
+ 	return NSS_STATUS_SUCCESS;
+ }

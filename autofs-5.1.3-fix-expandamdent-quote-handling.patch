@@ -1,0 +1,87 @@
+autofs-5.1.3 - fix expandamdent() quote handling
+
+From: Ian Kent <raven@themaw.net>
+
+The amd map entry option value expansion isn't quite right.
+
+It shouldn't be possible to get double quotes in a map entry option
+value, only single quotes should be seen. And within single quotes
+only expand ${} macros.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG        |    1 +
+ lib/parse_subs.c |   23 ++++++-----------------
+ 2 files changed, 7 insertions(+), 17 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -275,6 +275,7 @@
+ - fix amd defaults map entry handling.
+ - refactor amd_parse.c.
+ - fix amd parser double quote handling.
++- fix expandamdent() quote handling.
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/lib/parse_subs.c
++++ autofs-5.0.7/lib/parse_subs.c
+@@ -1028,12 +1028,12 @@ static char *expand_slash_or_dot(char *s
+  * $-expand an amd-style map entry and return the length of the entry.
+  * If "dst" is NULL, just count the length.
+  */
+-/* TODO: how should quoting be handled? */
+ int expandamdent(const char *src, char *dst, const struct substvar *svc)
+ {
+ 	unsigned int flags = conf_amd_get_flags(NULL);
+ 	const struct substvar *sv;
+ 	const char *o_src = src;
++	unsigned int squote = 0;
+ 	int len, l;
+ 	const char *p;
+ 	char ch;
+@@ -1104,7 +1104,7 @@ int expandamdent(const char *src, char *
+ 			break;
+ 
+ 		case '\\':
+-			if (!(flags & CONF_NORMALIZE_SLASHES)) {
++			if (squote || !(flags & CONF_NORMALIZE_SLASHES)) {
+ 				len++;
+ 				if (dst)
+ 					*dst++ = ch;
+@@ -1124,7 +1124,7 @@ int expandamdent(const char *src, char *
+ 			if (dst)
+ 				*dst++ = ch;
+ 
+-			if (!(flags & CONF_NORMALIZE_SLASHES))
++			if (squote || !(flags & CONF_NORMALIZE_SLASHES))
+ 				break;
+ 
+ 			/* Double slash at start is allowed */
+@@ -1138,23 +1138,12 @@ int expandamdent(const char *src, char *
+ 				src++;
+ 			break;
+ 
+-		case '"':
++		/* 39 is single quote */
++		case 39:
+ 			len++;
+ 			if (dst)
+ 				*dst++ = ch;
+-
+-			while (*src && *src != '"') {
+-				len++;
+-				if (dst)
+-					*dst++ = *src;
+-				src++;
+-			}
+-			if (*src) {
+-				len++;
+-				if (dst)
+-					*dst++ = *src;
+-				src++;
+-			}
++			squote = !squote;
+ 			break;
+ 
+ 		default:

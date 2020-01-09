@@ -1,0 +1,47 @@
+autofs-5.1.3 - fix symlink false negative in umount_multi()
+
+From: Ian Kent <raven@themaw.net>
+
+Using is_mounted() on a symlink will give a false negative for MNTS_ALL
+since the kernel will return mounted true for a dentry within an autofs
+mount point.
+
+Just remove the check and rely on lstat().
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |    5 -----
+ 2 files changed, 1 insertion(+), 5 deletions(-)
+
+--- autofs-5.0.7.orig/CHANGELOG
++++ autofs-5.0.7/CHANGELOG
+@@ -270,6 +270,7 @@
+ - fix cachefs parse message not being logged.
+ - fix typo in amd_parse.c.
+ - add missing MODPREFIX to logging in amd parser.
++- fix symlink false negative in umount_multi().
+ 
+ 25/07/2012 autofs-5.0.7
+ =======================
+--- autofs-5.0.7.orig/daemon/automount.c
++++ autofs-5.0.7/daemon/automount.c
+@@ -640,10 +640,6 @@ int umount_multi(struct autofs_point *ap
+ 
+ 	debug(ap->logopt, "path %s incl %d", path, incl);
+ 
+-	/* If path is a mount it can't be a symlink */
+-	if (is_mounted(_PATH_MOUNTED, path, MNTS_ALL))
+-		goto real_mount;
+-
+ 	if (lstat(path, &st)) {
+ 		warn(ap->logopt,
+ 		     "failed to stat directory or symlink %s", path);
+@@ -688,7 +684,6 @@ int umount_multi(struct autofs_point *ap
+ 		return 0;
+ 	}
+ 
+-real_mount:
+ 	is_autofs_fs = 0;
+ 	if (master_find_submount(ap, path))
+ 		is_autofs_fs = 1;
