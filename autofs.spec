@@ -4,7 +4,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.0.5
-Release: 132%{?dist}
+Release: 133%{?dist}
 Epoch: 1
 License: GPLv2+
 Group: System Environment/Daemons
@@ -470,6 +470,8 @@ Patch760: autofs-5.0.7-fix-inconsistent-signed-usage-for-__rpc_ping.patch
 Patch761: autofs-5.1.2-check-NFS-server-availability-on-local-mount-fallback.patch
 Patch762: autofs-5.1.2-make-set_direct_mount_catatonic-more-general.patch
 Patch763: autofs-5.1.2-set-autofs-mounts-catatonic-at-exit.patch
+
+Patch764: autofs-5.1.3-only-take-master-map-mutex-for-master-map-update.patch
 
 Buildroot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: autoconf, hesiod-devel, openldap-devel, bison, flex, libxml2-devel, cyrus-sasl-devel, openssl-devel module-init-tools util-linux nfs-utils e2fsprogs libtirpc-devel, libsss_autofs >= 1.8.0-5
@@ -954,6 +956,8 @@ echo %{version}-%{release} > .version
 %patch762 -p1
 %patch763 -p1
 
+%patch764 -p1
+
 %build
 #CFLAGS="$RPM_OPT_FLAGS" ./configure --prefix=/usr --libdir=%{_libdir}
 %configure --disable-mount-locking --enable-ignore-busy --with-libtirpc
@@ -1011,6 +1015,12 @@ fi
 /misc
 
 %changelog
+* Mon Oct 16 2017 Ian Kent <ikent@redhat.com> - 5.0.5-133.el6_9
+- bz1501922 - Autofs processes hung while waiting for the release of an
+  entry master_lock that is held by another thread waiting on a bind mount
+  - only take master map mutex for master map update.
+-Resolves: rhbz#1501922
+
 * Tue Jan 31 2017 Ian Kent <ikent@redhat.com> - 5.0.5-132
 - bz1277033 - RHEL6.7: shutdown / reboot hangs with findmnt in a readlink
   system call, doing path_walk and stuck in autofs4_wait
