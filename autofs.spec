@@ -8,7 +8,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.0.7
-Release: 70%{?dist}.1
+Release: 70%{?dist}
 Epoch: 1
 License: GPLv2+
 Group: System Environment/Daemons
@@ -409,8 +409,6 @@ Patch792: autofs-5.1.3-fix-unset-tsd-group-name-handling.patch
 Patch793: autofs-5.1.3-revert-fix-argc-off-by-one-in-mount_autofs_c.patch
 Patch794: autofs-5.1.3-allow-dot-in-OPTIONSTR-value-lexer-pattern.patch
 Patch795: autofs-5.1.3-handle-additional-nfs-versions-in-mount_nfs_c.patch
-
-Patch800: autofs-5.1.3-reset-master-map-list-on-startup-retry.patch
 
 Buildroot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 %if %{with_systemd}
@@ -859,8 +857,6 @@ echo %{version}-%{release} > .version
 %patch794 -p1
 %patch795 -p1
 
-%patch800 -p1
-
 %build
 LDFLAGS=-Wl,-z,now
 %configure --disable-mount-locking \
@@ -957,11 +953,6 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
-* Thu Oct 19 2017 Ian Kent <ikent@redhat.com> - 5.0.7-70.el7_4.1
-- bz1515311 - Automount cannot access host shares after a reboot [rhel-7.4.z]
-  - reset master map list on startup retry.
-- Resolves: rhbz#1515311
-
 * Thu Oct 19 2017 Ian Kent <ikent@redhat.com> - 5.0.7-70.el7_4
 - bz1503945 - autofs option parsing for maps with fstype=autofs no longer
   works [rhel-7.4.z]
